@@ -27,6 +27,18 @@ const WEEK_DAYS = [
   "saturday",
   "sunday",
 ];
+const MAIN_VIEWS = [
+  { id: "overview", label: "Overview" },
+  { id: "inventory", label: "Inventory" },
+  { id: "shopping", label: "Shopping List" },
+  { id: "recipes", label: "Recipes" },
+  { id: "weekly", label: "Weekly Menu" },
+];
+const INVENTORY_MODES = [
+  { id: "multi", label: "Multi View" },
+  { id: "fridge", label: "Fridge View" },
+  { id: "expiring", label: "Expiring Soon View" },
+];
 
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
@@ -233,6 +245,70 @@ const getCategory = (product) => {
   }
   return "Other";
 };
+
+const getStockSignals = (product, soonDays = 2) => {
+  const units = withExpiryApplied(toUnits(product));
+  return {
+    units,
+    inStock: countInStock(units),
+    expired: units.filter((unit) => unit.state === "expired").length,
+    soon: soonCount(units, soonDays),
+  };
+};
+
+const groupStockProducts = (products, groupBy) => {
+  const groups = new Map();
+  for (const product of products) {
+    const key =
+      groupBy === "Category"
+        ? getCategory(product)
+        : groupBy === "Label"
+          ? product.labels?.[0] || "Unlabeled"
+          : groupBy === "Base"
+            ? product.isBase
+              ? "Basisvarer"
+              : "Andre"
+            : "All";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(product);
+  }
+  const sortKey = (key) =>
+    groupBy === "Category"
+      ? CATEGORY_WEIGHT[key] ?? 999
+      : groupBy === "Base"
+        ? key === "Basisvarer"
+          ? 0
+          : 1
+        : key.toLocaleLowerCase("nb");
+
+  return [...groups.entries()]
+    .sort((a, b) => (sortKey(a[0]) > sortKey(b[0]) ? 1 : -1))
+    .map(([key, products]) => [
+      key,
+      products.slice().sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" })),
+    ]);
+};
+
+function ViewSelector({ options, value, onChange }) {
+  return (
+    <div className="flex gap-2 overflow-x-auto rounded-xl bg-white p-1 shadow">
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => onChange(option.id)}
+          className={`min-h-10 shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
+            value === option.id
+              ? "bg-black text-white"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function useAuthUser() {
   const [user, setUser] = useState(null);
@@ -777,11 +853,11 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
   };
 
   return (
-    <div className="rounded-xl bg-white p-4 shadow">
+    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow">
       <div className="mb-3 flex items-start justify-between gap-3">
         <button
           onClick={() => addUnits(1)}
-          className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-slate-100 text-4xl hover:bg-slate-200"
+          className="grid h-20 w-20 shrink-0 touch-manipulation place-items-center rounded-xl bg-slate-100 text-5xl hover:bg-slate-200"
           aria-label={`Add ${product.name}`}
         >
           {product.emoji || pickEmoji(product.name)}
@@ -802,7 +878,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
             ))}
           </div>
         </div>
-        <button onClick={() => setManage((value) => !value)} className="rounded border px-2 py-1 text-xs">
+        <button onClick={() => setManage((value) => !value)} className="min-h-9 rounded border px-2 py-1 text-xs">
           Manage
         </button>
       </div>
@@ -820,7 +896,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
             <button
               key={unit.id}
               onClick={() => cycleUnit(unit.id)}
-              className={`grid h-8 w-8 place-items-center rounded-full border text-sm ${
+              className={`grid h-10 w-10 touch-manipulation place-items-center rounded-full border text-base ${
                 unit.state === "opened"
                   ? "border-amber-200 bg-amber-50"
                   : unit.state === "expired"
@@ -834,7 +910,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
           ))
         )}
         {activeUnits.length > displayedUnits.length && (
-          <span className="grid h-8 place-items-center rounded-full bg-slate-100 px-2 text-xs text-slate-500">
+          <span className="grid h-10 place-items-center rounded-full bg-slate-100 px-2 text-xs text-slate-500">
             +{activeUnits.length - displayedUnits.length}
           </span>
         )}
@@ -854,44 +930,210 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => addUnits(product.packSize || 1)} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+        <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
           + pack
         </button>
-        <button onClick={() => changeSome(["full"], "opened", 1)} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+        <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
           Open
         </button>
         <button
           onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
-          className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Empty
         </button>
         <button
           onClick={() => changeSome(["full", "opened"], "expired", 1)}
-          className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Expire
         </button>
         <button
           onClick={onAddToShoppingList}
-          className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Add to list
         </button>
         {manage && (
           <>
-            <button onClick={onEdit} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+            <button onClick={onEdit} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
               Edit
             </button>
             <button
               onClick={onDelete}
-              className="rounded border border-rose-200 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
+              className="min-h-10 rounded border border-rose-200 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
             >
               Delete
             </button>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, soonDays }) {
+  const units = withExpiryApplied(toUnits(product));
+  const count = countInStock(units);
+  const expired = units.filter((unit) => unit.state === "expired").length;
+  const soon = soonCount(units, soonDays);
+  const activeUnits = units.filter((unit) => unit.state !== "empty");
+  const displayedUnits = activeUnits.slice(0, 24);
+  const [manage, setManage] = useState(false);
+  const emoji = product.emoji || pickEmoji(product.name);
+
+  const patchUnits = async (nextUnits, extraPatch = {}) => {
+    const hadStock = countInStock(units) > 0;
+    const hasStock = countInStock(nextUnits) > 0;
+    await onPatch({ ...extraPatch, items: nextUnits });
+    if (product.autoAddWhenEmpty && hadStock && !hasStock) {
+      await onAddToShoppingList();
+    }
+  };
+
+  const addUnits = (amount = 1) =>
+    patchUnits(units.concat(Array.from({ length: amount }, () => genUnit(product.shelfLifeDays))));
+
+  const cycleUnit = (unitId) =>
+    patchUnits(
+      units.map((unit) =>
+        unit.id === unitId ? { ...unit, state: nextState[unit.state || "full"] || "full" } : unit
+      )
+    );
+
+  const changeSome = (fromStates, toState, amount) => {
+    let left = amount;
+    patchUnits(
+      units.map((unit) => {
+        if (left > 0 && fromStates.includes(unit.state || "full")) {
+          left -= 1;
+          return { ...unit, state: toState };
+        }
+        return unit;
+      })
+    );
+  };
+
+  return (
+    <div className="relative flex min-h-[360px] flex-col rounded-[2rem] bg-sky-100 p-6 text-center shadow-sm ring-1 ring-sky-200/70">
+      <div className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black text-sm font-bold text-white shadow-sm">
+        {count}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => addUnits(1)}
+        className="mx-auto mt-5 grid h-32 w-32 touch-manipulation place-items-center rounded-[1.75rem] bg-white/50 text-7xl shadow-sm hover:bg-white/70"
+        aria-label={`Add ${product.name}`}
+      >
+        {emoji}
+      </button>
+
+      <div className="mt-5">
+        <h3 className="mx-auto max-w-[14rem] text-2xl font-bold leading-tight text-slate-950">
+          {product.name}
+        </h3>
+        <div className="mt-2 flex min-h-6 flex-wrap justify-center gap-1.5 text-xs">
+          {product.freezer && <span className="rounded-full bg-white/70 px-2 py-0.5 text-slate-700">Frozen</span>}
+          {product.isBase && <span className="rounded-full bg-white/70 px-2 py-0.5 text-slate-700">Basisvare</span>}
+          {expired > 0 && (
+            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{expired} expired</span>
+          )}
+          {soon > 0 && <span className="rounded-full bg-white/70 px-2 py-0.5 text-sky-800">{soon} soon</span>}
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-center gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="min-h-10 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => setManage((value) => !value)}
+          className="min-h-10 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
+        >
+          Manage
+        </button>
+        <button
+          type="button"
+          onClick={() => addUnits(1)}
+          className="grid min-h-10 min-w-10 touch-manipulation place-items-center rounded-full bg-black px-4 py-2 text-lg font-bold text-white shadow-sm hover:bg-slate-800"
+          aria-label={`Add one ${product.name}`}
+        >
+          +
+        </button>
+      </div>
+
+      <div className="mt-5 flex min-h-12 flex-wrap justify-center gap-2">
+        {displayedUnits.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => addUnits(1)}
+            className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-white"
+          >
+            add first unit
+          </button>
+        ) : (
+          displayedUnits.map((unit) => (
+            <button
+              key={unit.id}
+              type="button"
+              onClick={() => cycleUnit(unit.id)}
+              className={`grid h-10 w-10 touch-manipulation place-items-center rounded-full border text-lg shadow-sm ${
+                unit.state === "opened"
+                  ? "border-amber-200 bg-amber-50"
+                  : unit.state === "expired"
+                    ? "border-rose-200 bg-rose-50"
+                    : "border-white bg-white/75"
+              }`}
+              title={unit.state || "full"}
+            >
+              {emoji}
+            </button>
+          ))
+        )}
+        {activeUnits.length > displayedUnits.length && (
+          <span className="grid h-10 place-items-center rounded-full bg-white/70 px-3 text-xs font-semibold text-slate-600">
+            +{activeUnits.length - displayedUnits.length}
+          </span>
+        )}
+      </div>
+
+      {manage && (
+        <div className="mt-5 flex flex-wrap justify-center gap-2 border-t border-sky-200/70 pt-4">
+          <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+            + pack
+          </button>
+          <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+            Open
+          </button>
+          <button
+            onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
+            className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white"
+          >
+            Empty
+          </button>
+          <button
+            onClick={() => changeSome(["full", "opened"], "expired", 1)}
+            className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white"
+          >
+            Expire
+          </button>
+          <button onClick={onAddToShoppingList} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+            Add to list
+          </button>
+          <button
+            onClick={onDelete}
+            className="min-h-10 rounded-full bg-rose-50 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-100"
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1729,6 +1971,8 @@ function Inventory({ householdId, householdName }) {
   const { items, loading } = useStockItems(householdId);
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
+  const [mainView, setMainView] = useState("overview");
+  const [inventoryMode, setInventoryMode] = useState("multi");
   const [groupBy, setGroupBy] = useState("Category");
   const [soonDays, setSoonDays] = useState(2);
   const [modalOpen, setModalOpen] = useState(false);
@@ -1742,38 +1986,37 @@ function Inventory({ householdId, householdName }) {
     return DEFAULT_PANTRY_ITEMS.filter((item) => !existingNames.has(normalize(item.name)));
   }, [items]);
 
-  const groupedProducts = useMemo(() => {
-    const groups = new Map();
-    for (const product of items) {
-      const key =
-        groupBy === "Category"
-          ? getCategory(product)
-          : groupBy === "Label"
-            ? product.labels?.[0] || "Unlabeled"
-            : groupBy === "Base"
-              ? product.isBase
-                ? "Basisvarer"
-                : "Andre"
-              : "All";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(product);
-    }
-    const sortKey = (key) =>
-      groupBy === "Category"
-        ? CATEGORY_WEIGHT[key] ?? 999
-        : groupBy === "Base"
-          ? key === "Basisvarer"
-            ? 0
-            : 1
-          : key.toLocaleLowerCase("nb");
+  const stockSummary = useMemo(() => {
+    const signals = items.map((item) => getStockSignals(item, soonDays));
+    return {
+      productCount: items.length,
+      unitCount: signals.reduce((total, item) => total + item.inStock, 0),
+      soonCount: signals.reduce((total, item) => total + item.soon, 0),
+      expiredCount: signals.reduce((total, item) => total + item.expired, 0),
+      shoppingCount: shoppingItems.filter((item) => !item.checked).length,
+      recipeCount: recipes.length,
+    };
+  }, [items, recipes.length, shoppingItems, soonDays]);
 
-    return [...groups.entries()]
-      .sort((a, b) => (sortKey(a[0]) > sortKey(b[0]) ? 1 : -1))
-      .map(([key, products]) => [
-        key,
-        products.slice().sort((a, b) => a.name.localeCompare(b.name, "nb", { sensitivity: "base" })),
-      ]);
-  }, [items, groupBy]);
+  const overviewGroups = useMemo(() => groupStockProducts(items, groupBy), [items, groupBy]);
+
+  const inventoryProducts = useMemo(() => {
+    if (inventoryMode === "fridge") {
+      return items.filter((product) => !product.freezer);
+    }
+    if (inventoryMode === "expiring") {
+      return items.filter((product) => {
+        const signals = getStockSignals(product, soonDays);
+        return signals.soon > 0 || signals.expired > 0;
+      });
+    }
+    return items;
+  }, [inventoryMode, items, soonDays]);
+
+  const inventoryGroups = useMemo(
+    () => groupStockProducts(inventoryProducts, groupBy),
+    [inventoryProducts, groupBy]
+  );
 
   const saveProduct = async (payload) => {
     if (editing) {
@@ -1866,94 +2109,204 @@ function Inventory({ householdId, householdName }) {
     setModalOpen(false);
   };
 
-  return (
-    <>
-      <div className="mb-4 rounded-xl bg-white p-3 shadow">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Inventory</p>
-            <h2 className="text-xl font-semibold text-slate-950">{householdName}</h2>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={() => setModalOpen(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
-              + Add Product
-            </button>
-            <button
-              onClick={addDefaultPantryItems}
-              disabled={addingTemplate || loading || availableDefaultItems.length === 0}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-            >
-              {addingTemplate ? "Adding..." : "Add default pantry items"}
-            </button>
-            <label className="flex items-center gap-2 text-sm">
-              <span>Soon</span>
-              <input
-                type="number"
-                min={1}
-                value={soonDays}
-                onChange={(event) => setSoonDays(Math.max(1, Number(event.target.value) || 1))}
-                className="w-16 rounded border px-2 py-1"
-              />
-            </label>
-            <select
-              value={groupBy}
-              onChange={(event) => setGroupBy(event.target.value)}
-              className="rounded border px-2 py-2 text-sm"
-            >
-              <option value="Category">Group: Category</option>
-              <option value="Label">Group: Label</option>
-              <option value="Base">Group: Basisvare</option>
-              <option value="None">Group: None</option>
-            </select>
-          </div>
+  const renderStockCards = (groups, emptyText, fullWidth = false) => (
+    <div>
+      {loading ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+          <p>Add the first product to start this household inventory.</p>
+          <button
+            onClick={addDefaultPantryItems}
+            disabled={addingTemplate}
+            className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {addingTemplate ? "Adding..." : "Add default pantry items"}
+          </button>
         </div>
-        {templateMessage && <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>}
+      ) : groups.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">{emptyText}</div>
+      ) : (
+        groups.map(([group, products]) => (
+          <section key={group} className="mb-4">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+              {group} <span className="text-slate-400">({products.length})</span>
+            </div>
+            <div className={`grid grid-cols-1 gap-4 ${fullWidth ? "md:grid-cols-2 xl:grid-cols-3" : "sm:grid-cols-2"}`}>
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  soonDays={soonDays}
+                  onPatch={(patch) =>
+                    updateDoc(doc(db, "households", householdId, "stockItems", product.id), {
+                      ...patch,
+                      updatedAt: serverTimestamp(),
+                    })
+                  }
+                  onAddToShoppingList={() => addStockItemToShoppingList(product)}
+                  onEdit={() => openEdit(product)}
+                  onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
+                />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
+    </div>
+  );
+
+  const renderFridgeStockCards = (groups, emptyText) => (
+    <div>
+      {loading ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
+      ) : items.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+          <p>Add the first product to start this household inventory.</p>
+          <button
+            onClick={addDefaultPantryItems}
+            disabled={addingTemplate}
+            className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {addingTemplate ? "Adding..." : "Add default pantry items"}
+          </button>
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">{emptyText}</div>
+      ) : (
+        groups.map(([group, products]) => (
+          <section key={group} className="mb-6">
+            <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
+              {group} <span className="text-slate-400">({products.length})</span>
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {products.map((product) => (
+                <FridgeProductCard
+                  key={product.id}
+                  product={product}
+                  soonDays={soonDays}
+                  onPatch={(patch) =>
+                    updateDoc(doc(db, "households", householdId, "stockItems", product.id), {
+                      ...patch,
+                      updatedAt: serverTimestamp(),
+                    })
+                  }
+                  onAddToShoppingList={() => addStockItemToShoppingList(product)}
+                  onEdit={() => openEdit(product)}
+                  onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
+                />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
+    </div>
+  );
+
+  const renderControls = () => (
+    <div className="mb-4 rounded-xl bg-white p-3 shadow">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {MAIN_VIEWS.find((view) => view.id === mainView)?.label || "Overview"}
+          </p>
+          <h2 className="text-xl font-semibold text-slate-950">{householdName}</h2>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setModalOpen(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
+            + Add Product
+          </button>
+          <button
+            onClick={addDefaultPantryItems}
+            disabled={addingTemplate || loading || availableDefaultItems.length === 0}
+            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+          >
+            {addingTemplate ? "Adding..." : "Add default pantry items"}
+          </button>
+          <label className="flex items-center gap-2 text-sm">
+            <span>Soon</span>
+            <input
+              type="number"
+              min={1}
+              value={soonDays}
+              onChange={(event) => setSoonDays(Math.max(1, Number(event.target.value) || 1))}
+              className="w-16 rounded border px-2 py-1"
+            />
+          </label>
+          <select
+            value={groupBy}
+            onChange={(event) => setGroupBy(event.target.value)}
+            className="rounded border px-2 py-2 text-sm"
+          >
+            <option value="Category">Group: Category</option>
+            <option value="Label">Group: Label</option>
+            <option value="Base">Group: Basisvare</option>
+            <option value="None">Group: None</option>
+          </select>
+        </div>
+      </div>
+      {templateMessage && <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>}
+    </div>
+  );
+
+  const renderOverview = () => (
+    <>
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <button
+          type="button"
+          onClick={() => setMainView("inventory")}
+          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Stock</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.unitCount}</div>
+          <div className="text-xs text-slate-500">{stockSummary.productCount} products</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setInventoryMode("expiring");
+            setMainView("inventory");
+          }}
+          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Soon</div>
+          <div className="mt-1 text-2xl font-semibold text-sky-700">{stockSummary.soonCount}</div>
+          <div className="text-xs text-slate-500">within {soonDays} days</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setInventoryMode("expiring");
+            setMainView("inventory");
+          }}
+          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Expired</div>
+          <div className="mt-1 text-2xl font-semibold text-rose-700">{stockSummary.expiredCount}</div>
+          <div className="text-xs text-slate-500">needs action</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainView("shopping")}
+          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Shopping</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.shoppingCount}</div>
+          <div className="text-xs text-slate-500">open items</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMainView("recipes")}
+          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Recipes</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.recipeCount}</div>
+          <div className="text-xs text-slate-500">saved</div>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div>
-          {loading ? (
-            <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
-          ) : items.length === 0 ? (
-            <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
-              <p>Add the first product to start this household inventory.</p>
-              <button
-                onClick={addDefaultPantryItems}
-                disabled={addingTemplate}
-                className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              >
-                {addingTemplate ? "Adding..." : "Add default pantry items"}
-              </button>
-            </div>
-          ) : (
-            groupedProducts.map(([group, products]) => (
-              <section key={group} className="mb-4">
-                <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
-                  {group} <span className="text-slate-400">({products.length})</span>
-                </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {products.map((product) => (
-                    <ProductCard
-                      key={product.id}
-                      product={product}
-                      soonDays={soonDays}
-                      onPatch={(patch) =>
-                        updateDoc(doc(db, "households", householdId, "stockItems", product.id), {
-                          ...patch,
-                          updatedAt: serverTimestamp(),
-                        })
-                      }
-                      onAddToShoppingList={() => addStockItemToShoppingList(product)}
-                      onEdit={() => openEdit(product)}
-                      onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))
-          )}
-        </div>
-
+        {renderStockCards(overviewGroups, "No matching stock items.")}
         <div className="space-y-4">
           <ShoppingListPanel
             householdId={householdId}
@@ -1967,6 +2320,71 @@ function Inventory({ householdId, householdName }) {
           <WeeklyMenu householdId={householdId} recipes={recipes} stockItems={items} />
         </div>
       </div>
+    </>
+  );
+
+  const renderInventoryView = () => (
+    <>
+      <div className="mb-4">
+        <ViewSelector options={INVENTORY_MODES} value={inventoryMode} onChange={setInventoryMode} />
+      </div>
+      <div className={inventoryMode === "multi" ? "grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
+        {inventoryMode === "fridge"
+          ? renderFridgeStockCards(inventoryGroups, "No fridge-view stock items yet.")
+          : renderStockCards(inventoryGroups, "Nothing is expiring soon or expired.")}
+        {inventoryMode === "multi" && (
+          <div className="space-y-4">
+            <ShoppingListPanel
+              householdId={householdId}
+              shoppingItems={shoppingItems}
+              shoppingLoading={shoppingLoading}
+              stockItems={items}
+              hideChecked={hideCheckedShoppingItems}
+              setHideChecked={setHideCheckedShoppingItems}
+            />
+            <section className="rounded-xl bg-white p-3 shadow">
+              <div className="font-semibold">Soon & Expired</div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-sky-50 p-3 text-sky-800">
+                  <div className="text-2xl font-semibold">{stockSummary.soonCount}</div>
+                  <div className="text-xs">Soon</div>
+                </div>
+                <div className="rounded-lg bg-rose-50 p-3 text-rose-800">
+                  <div className="text-2xl font-semibold">{stockSummary.expiredCount}</div>
+                  <div className="text-xs">Expired</div>
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <div className="mb-4">
+        <ViewSelector options={MAIN_VIEWS} value={mainView} onChange={setMainView} />
+      </div>
+
+      {renderControls()}
+
+      {mainView === "overview" && renderOverview()}
+      {mainView === "inventory" && renderInventoryView()}
+      {mainView === "shopping" && (
+        <ShoppingListPanel
+          householdId={householdId}
+          shoppingItems={shoppingItems}
+          shoppingLoading={shoppingLoading}
+          stockItems={items}
+          hideChecked={hideCheckedShoppingItems}
+          setHideChecked={setHideCheckedShoppingItems}
+        />
+      )}
+      {mainView === "recipes" && <RecipeManager householdId={householdId} stockItems={items} />}
+      {mainView === "weekly" && (
+        <WeeklyMenu householdId={householdId} recipes={recipes} stockItems={items} />
+      )}
 
       <ProductModal open={modalOpen} product={editing} onClose={closeModal} onSave={saveProduct} />
     </>
