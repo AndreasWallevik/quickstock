@@ -564,6 +564,74 @@ Potential future additions:
 
 ---
 
+# Future Slice: Recipe Suggestions
+
+## Goal
+
+Suggest recipes based on current household stock items.
+
+Recipe suggestions are inspiration only.
+
+They are NOT the source of truth for household recipes, inventory, shopping,
+or weekly plans.
+
+---
+
+## MVP Behavior
+
+Use existing stock item names as ingredient search terms.
+
+The app should:
+- show suggested recipes
+- allow saving/importing one suggestion as a local recipe
+- never auto-add suggested recipes to the weekly menu without user confirmation
+
+---
+
+## Potential Providers
+
+Potential external providers:
+- Spoonacular for ingredient-based recipe search
+- TheMealDB for random/inspiration recipe of the day
+
+---
+
+## Import Rules
+
+Imported recipes MUST be converted into the local recipe format:
+
+```js
+recipe = {
+  id,
+  name,
+  emoji,
+  servings,
+  ingredients: [],
+  steps: []
+}
+```
+
+Ingredients from external APIs should be reviewed and mapped to stock items
+manually.
+
+External API ingredients should not be trusted as clean inventory references.
+
+Imported ingredients should use:
+
+```js
+ingredient = {
+  stockItemId,
+  nameSnapshot,
+  quantity,
+  unit
+}
+```
+
+If no stock item match exists, the ingredient may remain unlinked until the
+user reviews it.
+
+---
+
 # Suggested Development Order
 
 ## Phase 1

@@ -62,11 +62,13 @@ service cloud.firestore {
       }
 
       match /recipes/{recipeId} {
-        allow read, write: if false;
+        allow read: if isHouseholdMember(householdId);
+        allow create, update, delete: if canManageStock(householdId);
       }
 
       match /weeklyPlans/{weekId} {
-        allow read, write: if false;
+        allow read: if isHouseholdMember(householdId);
+        allow create, update, delete: if canManageStock(householdId);
       }
     }
 

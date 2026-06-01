@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -17,6 +18,46 @@ import { auth, db, firebaseReady, googleProvider } from "./firebase";
 const DAY = 24 * 60 * 60 * 1000;
 const STOCK_STATES = ["full", "opened", "empty", "expired"];
 const nextState = { full: "opened", opened: "empty", expired: "empty", empty: "full" };
+const WEEK_DAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+];
+
+const toDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getStartOfIsoWeek = (date = new Date()) => {
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = next.getDay() || 7;
+  next.setDate(next.getDate() - day + 1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+};
+
+const getIsoWeekId = (date = new Date()) => {
+  const weekStart = getStartOfIsoWeek(date);
+  const thursday = new Date(weekStart);
+  thursday.setDate(weekStart.getDate() + 3);
+  const firstThursday = new Date(thursday.getFullYear(), 0, 4);
+  const firstWeekStart = getStartOfIsoWeek(firstThursday);
+  const week = 1 + Math.round((weekStart - firstWeekStart) / (7 * DAY));
+  return `${thursday.getFullYear()}-W${String(week).padStart(2, "0")}`;
+};
+
+const shiftWeek = (weekStart, amount) => {
+  const next = new Date(weekStart);
+  next.setDate(next.getDate() + amount * 7);
+  return getStartOfIsoWeek(next);
+};
 
 const CATEGORY_ORDER = [
   "Produce",
@@ -103,6 +144,19 @@ const EMOJI_GUESSES = [
   ["garlic|hvitlok|hvitløk", "🧄"],
   ["coffee|kaffe", "☕️"],
   ["juice|saft", "🧃"],
+];
+
+const DEFAULT_PANTRY_ITEMS = [
+  { name: "Milk", emoji: "🥛", packSize: 1, shelfLifeDays: 7 },
+  { name: "Eggs", emoji: "🥚", packSize: 12, shelfLifeDays: 28 },
+  { name: "Butter", emoji: "🧈", packSize: 1, shelfLifeDays: 60 },
+  { name: "Bread", emoji: "🍞", packSize: 1, shelfLifeDays: 5 },
+  { name: "Pasta", emoji: "🍝", packSize: 1, shelfLifeDays: 365 },
+  { name: "Cheese", emoji: "🧀", packSize: 1, shelfLifeDays: 21 },
+  { name: "Tomato sauce", emoji: "🥫", packSize: 1, shelfLifeDays: 365 },
+  { name: "Salt", emoji: "🧂", packSize: 1, shelfLifeDays: 3650 },
+  { name: "Onion", emoji: "🧅", packSize: 1, shelfLifeDays: 30 },
+  { name: "Potatoes", emoji: "🥔", packSize: 1, shelfLifeDays: 45 },
 ];
 
 const makeInviteCode = () => `HOUSE-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
@@ -258,6 +312,100 @@ function useStockItems(householdId) {
   }, [householdId]);
 
   return { items, loading };
+}
+
+function useShoppingList(householdId) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!householdId || !db) {
+      setItems([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    const itemsQuery = query(
+      collection(db, "households", householdId, "shoppingList"),
+      orderBy("createdAt")
+    );
+
+    return onSnapshot(
+      itemsQuery,
+      (snapshot) => {
+        setItems(snapshot.docs.map((itemDoc) => ({ id: itemDoc.id, ...itemDoc.data() })));
+        setLoading(false);
+      },
+      () => {
+        setItems([]);
+        setLoading(false);
+      }
+    );
+  }, [householdId]);
+
+  return { items, loading };
+}
+
+function useRecipes(householdId) {
+  const [recipes, setRecipes] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!householdId || !db) {
+      setRecipes([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    const recipesQuery = query(
+      collection(db, "households", householdId, "recipes"),
+      orderBy("name")
+    );
+
+    return onSnapshot(
+      recipesQuery,
+      (snapshot) => {
+        setRecipes(snapshot.docs.map((recipeDoc) => ({ id: recipeDoc.id, ...recipeDoc.data() })));
+        setLoading(false);
+      },
+      () => {
+        setRecipes([]);
+        setLoading(false);
+      }
+    );
+  }, [householdId]);
+
+  return { recipes, loading };
+}
+
+function useWeeklyPlan(householdId, weekId) {
+  const [plan, setPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!householdId || !weekId || !db) {
+      setPlan(null);
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+    return onSnapshot(
+      doc(db, "households", householdId, "weeklyPlans", weekId),
+      (snapshot) => {
+        setPlan(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : { id: weekId });
+        setLoading(false);
+      },
+      () => {
+        setPlan({ id: weekId });
+        setLoading(false);
+      }
+    );
+  }, [householdId, weekId]);
+
+  return { plan, loading };
 }
 
 function MissingFirebaseConfig() {
@@ -588,7 +736,7 @@ function ProductModal({ open, product, onClose, onSave }) {
   );
 }
 
-function ProductCard({ product, onPatch, onEdit, onDelete, soonDays }) {
+function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, soonDays }) {
   const units = withExpiryApplied(toUnits(product));
   const count = countInStock(units);
   const expired = units.filter((unit) => unit.state === "expired").length;
@@ -597,7 +745,14 @@ function ProductCard({ product, onPatch, onEdit, onDelete, soonDays }) {
   const displayedUnits = activeUnits.slice(0, 18);
   const [manage, setManage] = useState(false);
 
-  const patchUnits = (nextUnits, extraPatch = {}) => onPatch({ ...extraPatch, items: nextUnits });
+  const patchUnits = async (nextUnits, extraPatch = {}) => {
+    const hadStock = countInStock(units) > 0;
+    const hasStock = countInStock(nextUnits) > 0;
+    await onPatch({ ...extraPatch, items: nextUnits });
+    if (product.autoAddWhenEmpty && hadStock && !hasStock) {
+      await onAddToShoppingList();
+    }
+  };
   const addUnits = (amount = 1) =>
     patchUnits(units.concat(Array.from({ length: amount }, () => genUnit(product.shelfLifeDays))));
 
@@ -717,6 +872,12 @@ function ProductCard({ product, onPatch, onEdit, onDelete, soonDays }) {
         >
           Expire
         </button>
+        <button
+          onClick={onAddToShoppingList}
+          className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+        >
+          Add to list
+        </button>
         {manage && (
           <>
             <button onClick={onEdit} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
@@ -735,12 +896,851 @@ function ProductCard({ product, onPatch, onEdit, onDelete, soonDays }) {
   );
 }
 
+function ShoppingListPanel({
+  householdId,
+  shoppingItems,
+  shoppingLoading,
+  stockItems,
+  hideChecked,
+  setHideChecked,
+}) {
+  const visibleItems = hideChecked
+    ? shoppingItems.filter((item) => !item.checked)
+    : shoppingItems;
+
+  const checkItem = async (shoppingItem, checked) => {
+    const shoppingRef = doc(db, "households", householdId, "shoppingList", shoppingItem.id);
+
+    if (!checked) {
+      await updateDoc(shoppingRef, { checked: false, checkedAt: null, updatedAt: serverTimestamp() });
+      return;
+    }
+
+    const batch = writeBatch(db);
+    const stockItem = shoppingItem.sourceStockItemId
+      ? stockItems.find((item) => item.id === shoppingItem.sourceStockItemId)
+      : null;
+
+    if (stockItem) {
+      const packs = Math.max(1, Number(shoppingItem.packs) || 1);
+      const packSize = Math.max(1, Number(stockItem.packSize) || 1);
+      const restockAmount = Math.max(1, packs * packSize);
+      const nextUnits = toUnits(stockItem).concat(
+        Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
+      );
+      batch.update(doc(db, "households", householdId, "stockItems", stockItem.id), {
+        items: nextUnits,
+        quantity: countInStock(nextUnits),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    batch.update(shoppingRef, {
+      checked: true,
+      checkedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
+  };
+
+  const deleteShoppingItem = (shoppingItemId) =>
+    deleteDoc(doc(db, "households", householdId, "shoppingList", shoppingItemId));
+
+  return (
+    <aside className="rounded-xl bg-white p-3 shadow">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="font-semibold">Shopping List</div>
+        <label className="flex items-center gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={hideChecked}
+            onChange={(event) => setHideChecked(event.target.checked)}
+          />
+          Hide checked
+        </label>
+      </div>
+
+      {shoppingLoading ? (
+        <div className="text-sm text-slate-500">Loading list...</div>
+      ) : visibleItems.length === 0 ? (
+        <div className="text-sm text-slate-500">List empty</div>
+      ) : (
+        <ul className="space-y-2">
+          {visibleItems.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2 py-2 text-sm"
+            >
+              <label className="flex min-w-0 items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(item.checked)}
+                  onChange={(event) => checkItem(item, event.target.checked)}
+                />
+                <span className={item.checked ? "truncate line-through opacity-60" : "truncate"}>
+                  {item.name}
+                  {item.packs ? ` x${item.packs}` : ""}
+                </span>
+              </label>
+              <button
+                onClick={() => deleteShoppingItem(item.id)}
+                className="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  );
+}
+
+const emptyIngredient = () => ({
+  stockItemId: "",
+  createStockItem: false,
+  nameSnapshot: "",
+  emoji: "🧺",
+  quantity: 1,
+  unit: "pcs",
+});
+
+function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: "",
+    emoji: "🍽️",
+    servings: 4,
+    ingredients: [emptyIngredient()],
+    stepsText: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setError("");
+    setForm({
+      name: recipe?.name || "",
+      emoji: recipe?.emoji || "🍽️",
+      servings: recipe?.servings || 4,
+      ingredients:
+        recipe?.ingredients?.length > 0
+          ? recipe.ingredients.map((ingredient) => ({
+              stockItemId: ingredient.stockItemId || "",
+              createStockItem: false,
+              nameSnapshot: ingredient.nameSnapshot || "",
+              emoji: pickEmoji(ingredient.nameSnapshot || ""),
+              quantity: ingredient.quantity || 1,
+              unit: ingredient.unit || "pcs",
+            }))
+          : [emptyIngredient()],
+      stepsText: (recipe?.steps || []).join("\n"),
+    });
+  }, [open, recipe]);
+
+  if (!open) return null;
+
+  const updateIngredient = (index, patch) => {
+    setForm((current) => ({
+      ...current,
+      ingredients: current.ingredients.map((ingredient, ingredientIndex) =>
+        ingredientIndex === index ? { ...ingredient, ...patch } : ingredient
+      ),
+    }));
+  };
+
+  const removeIngredient = (index) => {
+    setForm((current) => ({
+      ...current,
+      ingredients:
+        current.ingredients.length === 1
+          ? [emptyIngredient()]
+          : current.ingredients.filter((_, ingredientIndex) => ingredientIndex !== index),
+    }));
+  };
+
+  const saveRecipe = async () => {
+    const name = form.name.trim();
+    if (!name) return;
+
+    setSaving(true);
+    setError("");
+    try {
+      const ingredients = [];
+      for (const ingredient of form.ingredients) {
+        const quantity = Math.max(0, Number(ingredient.quantity) || 0);
+        if (quantity <= 0) continue;
+
+        if (ingredient.createStockItem) {
+          const itemName = ingredient.nameSnapshot.trim();
+          if (!itemName) continue;
+          const newStockRef = await addDoc(
+            collection(db, "households", householdId, "stockItems"),
+            {
+              name: itemName,
+              emoji: ingredient.emoji || pickEmoji(itemName),
+              packSize: 1,
+              shelfLifeDays: 30,
+              freezer: false,
+              autoAddWhenEmpty: false,
+              isBase: false,
+              labels: ["Recipe"],
+              items: [],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }
+          );
+          ingredients.push({
+            stockItemId: newStockRef.id,
+            nameSnapshot: itemName,
+            quantity,
+            unit: ingredient.unit || "pcs",
+          });
+        } else {
+          const stockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
+          const itemName = stockItem?.name || ingredient.nameSnapshot.trim();
+          if (!itemName) continue;
+          ingredients.push({
+            stockItemId: ingredient.stockItemId || "",
+            nameSnapshot: itemName,
+            quantity,
+            unit: ingredient.unit || "pcs",
+          });
+        }
+      }
+
+      const payload = {
+        name,
+        emoji: form.emoji || "🍽️",
+        servings: Math.max(1, Number(form.servings) || 1),
+        ingredients,
+        steps: form.stepsText
+          .split("\n")
+          .map((step) => step.trim())
+          .filter(Boolean),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (recipe?.id) {
+        await updateDoc(doc(db, "households", householdId, "recipes", recipe.id), payload);
+      } else {
+        await addDoc(collection(db, "households", householdId, "recipes"), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+      }
+      onSaved();
+    } catch (err) {
+      setError(err.message || "Could not save recipe.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="max-h-[92vh] w-[720px] max-w-[96vw] overflow-auto rounded-xl bg-white p-4 shadow-xl">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-lg font-semibold">{recipe ? "Edit recipe" : "Create recipe"}</div>
+          <button onClick={onClose} className="rounded bg-slate-100 px-2 py-1 text-sm hover:bg-slate-200">
+            Close
+          </button>
+        </div>
+
+        <div className="grid grid-cols-[80px_1fr_110px] gap-3">
+          <label className="text-sm">
+            Emoji
+            <input
+              value={form.emoji}
+              onChange={(event) => setForm((current) => ({ ...current, emoji: event.target.value }))}
+              className="mt-1 w-full rounded border px-2 py-1 text-2xl"
+            />
+          </label>
+          <label className="text-sm">
+            Name
+            <input
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              className="mt-1 w-full rounded border px-2 py-1"
+              placeholder="Tacos"
+            />
+          </label>
+          <label className="text-sm">
+            Servings
+            <input
+              type="number"
+              min={1}
+              value={form.servings}
+              onChange={(event) => setForm((current) => ({ ...current, servings: event.target.value }))}
+              className="mt-1 w-full rounded border px-2 py-1"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="font-medium">Ingredients</div>
+            <button
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  ingredients: [...current.ingredients, emptyIngredient()],
+                }))
+              }
+              className="rounded border px-2 py-1 text-sm hover:bg-slate-50"
+            >
+              + Ingredient
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {form.ingredients.map((ingredient, index) => (
+              <div key={index} className="rounded-lg border border-slate-200 p-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
+                  {ingredient.createStockItem ? (
+                    <input
+                      value={ingredient.nameSnapshot}
+                      onChange={(event) =>
+                        updateIngredient(index, {
+                          nameSnapshot: event.target.value,
+                          emoji: ingredient.emoji || pickEmoji(event.target.value),
+                        })
+                      }
+                      className="rounded border px-2 py-1 text-sm"
+                      placeholder="New stock item name"
+                    />
+                  ) : (
+                    <select
+                      value={ingredient.stockItemId}
+                      onChange={(event) => {
+                        const stockItem = stockItems.find((item) => item.id === event.target.value);
+                        updateIngredient(index, {
+                          stockItemId: event.target.value,
+                          nameSnapshot: stockItem?.name || "",
+                          unit: ingredient.unit || "pcs",
+                        });
+                      }}
+                      className="rounded border px-2 py-1 text-sm"
+                    >
+                      <option value="">Select stock item</option>
+                      {stockItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    value={ingredient.quantity}
+                    onChange={(event) => updateIngredient(index, { quantity: event.target.value })}
+                    className="rounded border px-2 py-1 text-sm"
+                    placeholder="Qty"
+                  />
+                  <input
+                    value={ingredient.unit}
+                    onChange={(event) => updateIngredient(index, { unit: event.target.value })}
+                    className="rounded border px-2 py-1 text-sm"
+                    placeholder="unit"
+                  />
+                  <button
+                    onClick={() => removeIngredient(index)}
+                    className="rounded border border-rose-200 px-2 py-1 text-sm text-rose-700 hover:bg-rose-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={ingredient.createStockItem}
+                    onChange={(event) =>
+                      updateIngredient(index, {
+                        createStockItem: event.target.checked,
+                        stockItemId: event.target.checked ? "" : ingredient.stockItemId,
+                      })
+                    }
+                  />
+                  Create this as a new stock item
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <label className="mt-4 block text-sm">
+          Steps
+          <textarea
+            value={form.stepsText}
+            onChange={(event) => setForm((current) => ({ ...current, stepsText: event.target.value }))}
+            className="mt-1 min-h-28 w-full rounded border px-2 py-1"
+            placeholder={"One step per line\nCook pasta\nAdd sauce"}
+          />
+        </label>
+
+        {error && <p className="mt-3 text-sm text-rose-700">{error}</p>}
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={saveRecipe}
+            disabled={saving || !form.name.trim()}
+            className="rounded bg-black px-3 py-1.5 text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : recipe ? "Save recipe" : "Create recipe"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecipeManager({ householdId, stockItems }) {
+  const { recipes, loading } = useRecipes(householdId);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const closeModal = () => {
+    setEditing(null);
+    setModalOpen(false);
+  };
+
+  return (
+    <section className="rounded-xl bg-white p-3 shadow">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="font-semibold">Recipes</div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50"
+        >
+          + Recipe
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-slate-500">Loading recipes...</div>
+      ) : recipes.length === 0 ? (
+        <div className="text-sm text-slate-500">No recipes yet</div>
+      ) : (
+        <div className="space-y-2">
+          {recipes.map((recipe) => (
+            <article key={recipe.id} className="rounded-lg border border-slate-100 p-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
+                    <span className="mr-1">{recipe.emoji || "🍽️"}</span>
+                    {recipe.name}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {recipe.servings || 1} servings · {(recipe.ingredients || []).length} ingredients
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      setEditing(recipe);
+                      setModalOpen(true);
+                    }}
+                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteDoc(doc(db, "households", householdId, "recipes", recipe.id))}
+                    className="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              {(recipe.ingredients || []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {recipe.ingredients.slice(0, 5).map((ingredient, index) => (
+                    <span key={index} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                      {ingredient.nameSnapshot}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+
+      <RecipeModal
+        open={modalOpen}
+        recipe={editing}
+        stockItems={stockItems}
+        householdId={householdId}
+        onClose={closeModal}
+        onSaved={closeModal}
+      />
+    </section>
+  );
+}
+
+function RecipeOpenModal({ recipe, onClose }) {
+  const [cookingMode, setCookingMode] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps = recipe?.steps || [];
+
+  useEffect(() => {
+    setCookingMode(false);
+    setStepIndex(0);
+  }, [recipe?.id]);
+
+  if (!recipe) return null;
+
+  if (cookingMode) {
+    const currentStep = steps[stepIndex] || "No steps added yet.";
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="flex min-h-[70vh] w-[760px] max-w-[96vw] flex-col rounded-xl bg-white p-5 shadow-xl">
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate text-2xl font-bold text-slate-950">
+                <span className="mr-2">{recipe.emoji || "ðŸ½ï¸"}</span>
+                {recipe.name}
+              </div>
+              <div className="mt-1 text-sm text-slate-500">
+                Step {steps.length ? stepIndex + 1 : 0} / {steps.length}
+              </div>
+            </div>
+            <button
+              onClick={() => setCookingMode(false)}
+              className="rounded border border-slate-300 px-4 py-3 text-sm hover:bg-slate-50"
+            >
+              Exit
+            </button>
+          </div>
+
+          <div className="flex flex-1 items-center justify-center rounded-xl bg-slate-50 p-6 text-center">
+            <p className="text-3xl font-semibold leading-snug text-slate-950 sm:text-4xl">
+              {currentStep}
+            </p>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
+              disabled={stepIndex === 0}
+              className="rounded bg-slate-100 px-4 py-4 text-lg font-semibold text-slate-900 hover:bg-slate-200 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() =>
+                setStepIndex((current) => Math.min(Math.max(steps.length - 1, 0), current + 1))
+              }
+              disabled={steps.length === 0 || stepIndex >= steps.length - 1}
+              className="rounded bg-black px-4 py-4 text-lg font-semibold text-white hover:opacity-90 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="max-h-[90vh] w-[560px] max-w-[96vw] overflow-auto rounded-xl bg-white p-4 shadow-xl">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-lg font-semibold">
+              <span className="mr-1">{recipe.emoji || "🍽️"}</span>
+              {recipe.name}
+            </div>
+            <div className="text-xs text-slate-500">{recipe.servings || 1} servings</div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              onClick={() => {
+                setStepIndex(0);
+                setCookingMode(true);
+              }}
+              disabled={steps.length === 0}
+              className="rounded bg-black px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-40"
+            >
+              Start cooking
+            </button>
+            <button onClick={onClose} className="rounded bg-slate-100 px-2 py-1 text-sm hover:bg-slate-200">
+              Close
+            </button>
+          </div>
+        </div>
+
+        {(recipe.ingredients || []).length > 0 && (
+          <section className="mb-4">
+            <div className="mb-2 text-sm font-medium">Ingredients</div>
+            <ul className="space-y-1 text-sm">
+              {recipe.ingredients.map((ingredient, index) => (
+                <li key={index} className="flex justify-between gap-3 rounded bg-slate-50 px-2 py-1">
+                  <span>{ingredient.nameSnapshot}</span>
+                  <span className="text-slate-500">
+                    {ingredient.quantity} {ingredient.unit}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {(recipe.steps || []).length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-sm font-medium">Steps</div>
+            </div>
+            <ol className="space-y-2 text-sm">
+              {recipe.steps.map((step, index) => (
+                <li key={index} className="rounded border border-slate-100 px-3 py-2">
+                  <span className="mr-2 text-slate-400">{index + 1}.</span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WeeklyMenu({ householdId, recipes, stockItems }) {
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => getStartOfIsoWeek(new Date()));
+  const selectedWeekId = getIsoWeekId(selectedWeekStart);
+  const selectedWeekStartDate = toDateInputValue(selectedWeekStart);
+  const { plan, loading } = useWeeklyPlan(householdId, selectedWeekId);
+  const [generating, setGenerating] = useState(false);
+  const [message, setMessage] = useState("");
+  const [openRecipe, setOpenRecipe] = useState(null);
+
+  const planRef = doc(db, "households", householdId, "weeklyPlans", selectedWeekId);
+  const days = plan?.days || {};
+
+  const saveDay = async (day, patch) => {
+    await setDoc(
+      planRef,
+      {
+        days: {
+          ...days,
+          [day]: {
+            recipeId: days[day]?.recipeId || "",
+            notes: days[day]?.notes || "",
+            ...patch,
+          },
+        },
+        weekId: selectedWeekId,
+        weekStartDate: selectedWeekStartDate,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  };
+
+  const removeDay = (day) => saveDay(day, { recipeId: "", notes: "" });
+
+  const generateMissingIngredients = async () => {
+    const plannedEntries = WEEK_DAYS.map((day) => ({
+      day,
+      recipe: recipes.find((recipe) => recipe.id === days[day]?.recipeId),
+    })).filter((entry) => entry.recipe);
+
+    if (plannedEntries.length === 0) {
+      setMessage("Select recipes before generating ingredients.");
+      return;
+    }
+
+    setGenerating(true);
+    setMessage("");
+    try {
+      const required = new Map();
+
+      plannedEntries.forEach(({ recipe }) => {
+        (recipe.ingredients || []).forEach((ingredient) => {
+          const key = `${ingredient.stockItemId || ingredient.nameSnapshot}|${ingredient.unit || ""}`;
+          const current = required.get(key) || {
+            name: ingredient.nameSnapshot,
+            unit: ingredient.unit || "",
+            quantity: 0,
+            stockItemId: ingredient.stockItemId || "",
+            sourceRecipeId: recipe.id,
+            sourceRecipeIds: [],
+          };
+          current.quantity += Math.max(0, Number(ingredient.quantity) || 0);
+          current.sourceRecipeIds = Array.from(new Set([...current.sourceRecipeIds, recipe.id]));
+          required.set(key, current);
+        });
+      });
+
+      const batch = writeBatch(db);
+      let added = 0;
+
+      required.forEach((ingredient) => {
+        const stockItem = ingredient.stockItemId
+          ? stockItems.find((item) => item.id === ingredient.stockItemId)
+          : stockItems.find((item) => normalize(item.name) === normalize(ingredient.name));
+        const stockUnit = stockItem?.unit || "pcs";
+        const recipeUnit = ingredient.unit || "";
+        const unitsMatch = Boolean(stockItem) && recipeUnit && stockUnit === recipeUnit;
+        const available = unitsMatch ? countInStock(toUnits(stockItem)) : 0;
+        const missingQuantity = unitsMatch
+          ? Math.max(0, ingredient.quantity - available)
+          : ingredient.quantity;
+        const needsReview = !unitsMatch;
+
+        if (missingQuantity <= 0 && !needsReview) return;
+
+        const shoppingRef = doc(collection(db, "households", householdId, "shoppingList"));
+        batch.set(shoppingRef, {
+          name: ingredient.name,
+          quantity: missingQuantity,
+          unit: recipeUnit,
+          packs: 1,
+          checked: false,
+          needsReview,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          sourceStockItemId: stockItem?.id || ingredient.stockItemId || "",
+          sourceType: "weeklyPlan",
+          sourceRecipeId: ingredient.sourceRecipeId,
+          sourceRecipeIds: ingredient.sourceRecipeIds,
+          sourceWeeklyPlanId: selectedWeekId,
+          autoGenerated: true,
+        });
+        added += 1;
+      });
+
+      if (added > 0) {
+        await batch.commit();
+      }
+      setMessage(added > 0 ? `Added ${added} shopping item(s).` : "Nothing missing.");
+    } catch (err) {
+      setMessage(err.message || "Could not generate missing ingredients.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl bg-white p-3 shadow">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="font-semibold">Weekly Menu</div>
+          <div className="text-xs text-slate-500">
+            {selectedWeekId} · starts {selectedWeekStartDate}
+          </div>
+        </div>
+        <button
+          onClick={generateMissingIngredients}
+          disabled={generating || loading}
+          className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
+        >
+          {generating ? "Generating..." : "Generate Missing Ingredients"}
+        </button>
+      </div>
+
+      <div className="mb-3 grid grid-cols-3 gap-2">
+        <button
+          onClick={() => {
+            setMessage("");
+            setSelectedWeekStart((current) => shiftWeek(current, -1));
+          }}
+          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => {
+            setMessage("");
+            setSelectedWeekStart(getStartOfIsoWeek(new Date()));
+          }}
+          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+        >
+          This week
+        </button>
+        <button
+          onClick={() => {
+            setMessage("");
+            setSelectedWeekStart((current) => shiftWeek(current, 1));
+          }}
+          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+        >
+          Next
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        {WEEK_DAYS.map((day) => {
+          const recipe = recipes.find((item) => item.id === days[day]?.recipeId);
+          return (
+            <div key={day} className="rounded-lg border border-slate-100 p-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="text-sm font-medium capitalize">{day}</div>
+                {recipe && (
+                  <button
+                    onClick={() => setOpenRecipe(recipe)}
+                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
+                  >
+                    Open
+                  </button>
+                )}
+              </div>
+              <select
+                value={days[day]?.recipeId || ""}
+                onChange={(event) => saveDay(day, { recipeId: event.target.value })}
+                className="mb-2 w-full rounded border px-2 py-1 text-sm"
+              >
+                <option value="">No recipe</option>
+                {recipes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={days[day]?.notes || ""}
+                onChange={(event) => saveDay(day, { notes: event.target.value })}
+                className="w-full rounded border px-2 py-1 text-sm"
+                placeholder="Notes"
+              />
+              {(days[day]?.recipeId || days[day]?.notes) && (
+                <button
+                  onClick={() => removeDay(day)}
+                  className="mt-2 rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {message && <p className="mt-3 text-sm text-slate-500">{message}</p>}
+      <RecipeOpenModal recipe={openRecipe} onClose={() => setOpenRecipe(null)} />
+    </section>
+  );
+}
+
 function Inventory({ householdId, householdName }) {
   const { items, loading } = useStockItems(householdId);
+  const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
+  const { recipes } = useRecipes(householdId);
   const [groupBy, setGroupBy] = useState("Category");
   const [soonDays, setSoonDays] = useState(2);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [addingTemplate, setAddingTemplate] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState("");
+  const [hideCheckedShoppingItems, setHideCheckedShoppingItems] = useState(true);
+
+  const availableDefaultItems = useMemo(() => {
+    const existingNames = new Set(items.map((item) => normalize(item.name)));
+    return DEFAULT_PANTRY_ITEMS.filter((item) => !existingNames.has(normalize(item.name)));
+  }, [items]);
 
   const groupedProducts = useMemo(() => {
     const groups = new Map();
@@ -793,6 +1793,69 @@ function Inventory({ householdId, householdName }) {
     setModalOpen(false);
   };
 
+  const addDefaultPantryItems = async () => {
+    if (availableDefaultItems.length === 0) {
+      setTemplateMessage("Default pantry items are already in this household.");
+      return;
+    }
+
+    setAddingTemplate(true);
+    setTemplateMessage("");
+    try {
+      const batch = writeBatch(db);
+      availableDefaultItems.forEach((item) => {
+        const itemRef = doc(collection(db, "households", householdId, "stockItems"));
+        batch.set(itemRef, {
+          ...item,
+          items: [genUnit(item.shelfLifeDays)],
+          labels: ["Starter"],
+          freezer: false,
+          autoAddWhenEmpty: false,
+          isBase: ["Pasta", "Salt", "Potatoes", "Onion"].includes(item.name),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+      setTemplateMessage(`Added ${availableDefaultItems.length} default pantry items.`);
+    } catch (err) {
+      setTemplateMessage(err.message || "Could not add default pantry items.");
+    } finally {
+      setAddingTemplate(false);
+    }
+  };
+
+  const addStockItemToShoppingList = async (product) => {
+    const existingItem = shoppingItems.find(
+      (item) => !item.checked && item.sourceStockItemId === product.id
+    );
+
+    if (existingItem) {
+      await updateDoc(doc(db, "households", householdId, "shoppingList", existingItem.id), {
+        packs: Math.max(1, Number(existingItem.packs) || 1) + 1,
+        quantity:
+          (Math.max(1, Number(existingItem.packs) || 1) + 1) *
+          Math.max(1, Number(product.packSize) || 1),
+        updatedAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    await addDoc(collection(db, "households", householdId, "shoppingList"), {
+      name: product.name,
+      quantity: Math.max(1, Number(product.packSize) || 1),
+      packs: 1,
+      checked: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      sourceStockItemId: product.id,
+      sourceType: "manual",
+      sourceRecipeId: null,
+      sourceWeeklyPlanId: null,
+      autoGenerated: false,
+    });
+  };
+
   const openEdit = (product) => {
     setEditing(product);
     setModalOpen(true);
@@ -814,6 +1877,13 @@ function Inventory({ householdId, householdName }) {
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setModalOpen(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
               + Add Product
+            </button>
+            <button
+              onClick={addDefaultPantryItems}
+              disabled={addingTemplate || loading || availableDefaultItems.length === 0}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {addingTemplate ? "Adding..." : "Add default pantry items"}
             </button>
             <label className="flex items-center gap-2 text-sm">
               <span>Soon</span>
@@ -837,40 +1907,66 @@ function Inventory({ householdId, householdName }) {
             </select>
           </div>
         </div>
+        {templateMessage && <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>}
       </div>
 
-      {loading ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
-      ) : items.length === 0 ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
-          Add the first product to start this household inventory.
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
+          {loading ? (
+            <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
+          ) : items.length === 0 ? (
+            <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+              <p>Add the first product to start this household inventory.</p>
+              <button
+                onClick={addDefaultPantryItems}
+                disabled={addingTemplate}
+                className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {addingTemplate ? "Adding..." : "Add default pantry items"}
+              </button>
+            </div>
+          ) : (
+            groupedProducts.map(([group, products]) => (
+              <section key={group} className="mb-4">
+                <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+                  {group} <span className="text-slate-400">({products.length})</span>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {products.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      soonDays={soonDays}
+                      onPatch={(patch) =>
+                        updateDoc(doc(db, "households", householdId, "stockItems", product.id), {
+                          ...patch,
+                          updatedAt: serverTimestamp(),
+                        })
+                      }
+                      onAddToShoppingList={() => addStockItemToShoppingList(product)}
+                      onEdit={() => openEdit(product)}
+                      onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
         </div>
-      ) : (
-        groupedProducts.map(([group, products]) => (
-          <section key={group} className="mb-4">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
-              {group} <span className="text-slate-400">({products.length})</span>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {products.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  soonDays={soonDays}
-                  onPatch={(patch) =>
-                    updateDoc(doc(db, "households", householdId, "stockItems", product.id), {
-                      ...patch,
-                      updatedAt: serverTimestamp(),
-                    })
-                  }
-                  onEdit={() => openEdit(product)}
-                  onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
-                />
-              ))}
-            </div>
-          </section>
-        ))
-      )}
+
+        <div className="space-y-4">
+          <ShoppingListPanel
+            householdId={householdId}
+            shoppingItems={shoppingItems}
+            shoppingLoading={shoppingLoading}
+            stockItems={items}
+            hideChecked={hideCheckedShoppingItems}
+            setHideChecked={setHideCheckedShoppingItems}
+          />
+          <RecipeManager householdId={householdId} stockItems={items} />
+          <WeeklyMenu householdId={householdId} recipes={recipes} stockItems={items} />
+        </div>
+      </div>
 
       <ProductModal open={modalOpen} product={editing} onClose={closeModal} onSave={saveProduct} />
     </>
