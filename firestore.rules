@@ -27,6 +27,25 @@ service cloud.firestore {
         memberRole(householdId) in ['admin', 'member'];
     }
 
+    function isInviteJoin(householdId, memberId) {
+      return signedIn()
+        && memberId == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role == 'member'
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode == get(/databases/$(database)/documents/households/$(householdId)).data.inviteCode;
+    }
+
+    function validInviteLookup(inviteCode) {
+      let householdId = request.resource.data.householdId;
+      return signedIn()
+        && householdId is string
+        && request.resource.data.name is string
+        && request.resource.data.inviteCode == inviteCode
+        && (isHouseholdMember(householdId) || willBeHouseholdMember(householdId))
+        && getAfter(/databases/$(database)/documents/households/$(householdId)).data.inviteCode == inviteCode;
+    }
+
     match /households/{householdId} {
       allow create: if signedIn()
         && request.resource.data.createdBy == request.auth.uid
@@ -41,11 +60,13 @@ service cloud.firestore {
         allow read: if signedIn()
           && (memberId == request.auth.uid || isHouseholdMember(householdId));
 
-        allow create: if signedIn()
+        allow create: if (
+          signedIn()
           && memberId == request.auth.uid
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.role == 'admin'
-          && getAfter(/databases/$(database)/documents/households/$(householdId)).data.createdBy == request.auth.uid;
+          && getAfter(/databases/$(database)/documents/households/$(householdId)).data.createdBy == request.auth.uid
+        ) || isInviteJoin(householdId, memberId);
 
         allow update, delete: if isHouseholdMember(householdId)
           && memberRole(householdId) == 'admin';
@@ -70,6 +91,13 @@ service cloud.firestore {
         allow read: if isHouseholdMember(householdId);
         allow create, update, delete: if canManageStock(householdId);
       }
+    }
+
+    match /householdInvites/{inviteCode} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update: if validInviteLookup(inviteCode);
+      allow delete: if false;
     }
 
     match /users/{userId} {

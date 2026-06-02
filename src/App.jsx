@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -576,8 +577,19 @@ function HouseholdBar({
   loading,
 }) {
   const [name, setName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [joinBusy, setJoinBusy] = useState(false);
   const [error, setError] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [copyMessage, setCopyMessage] = useState("");
+
+  const selectedHousehold = memberships.find((household) => household.id === selectedId);
+  const selectedInviteCode = selectedHousehold?.inviteCode || "";
+
+  useEffect(() => {
+    setCopyMessage("");
+  }, [selectedInviteCode]);
 
   const createHousehold = async (event) => {
     event.preventDefault();
@@ -595,6 +607,7 @@ function HouseholdBar({
         role: "admin",
         inviteCode: makeInviteCode(),
       };
+      const inviteRef = doc(db, "householdInvites", householdSummary.inviteCode);
       const batch = writeBatch(db);
 
       batch.set(householdRef, {
@@ -618,6 +631,12 @@ function HouseholdBar({
         joinedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+      batch.set(inviteRef, {
+        householdId: householdRef.id,
+        name: householdSummary.name,
+        inviteCode: householdSummary.inviteCode,
+        updatedAt: serverTimestamp(),
+      });
 
       await batch.commit();
       onCreated({ id: householdRef.id, ...householdSummary });
@@ -630,13 +649,102 @@ function HouseholdBar({
     }
   };
 
+  const copyInviteCode = async () => {
+    if (!selectedHousehold || !selectedInviteCode) return;
+
+    setCopyMessage("");
+    try {
+      await setDoc(
+        doc(db, "householdInvites", selectedInviteCode),
+        {
+          householdId: selectedHousehold.id,
+          name: selectedHousehold.name || "Household",
+          inviteCode: selectedInviteCode,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      await navigator.clipboard.writeText(selectedInviteCode);
+      setCopyMessage("Copied");
+    } catch {
+      setCopyMessage("Copy failed");
+    }
+  };
+
+  const joinHousehold = async (event) => {
+    event.preventDefault();
+    const code = inviteCode.trim().toUpperCase();
+    if (!code) return;
+
+    setJoinBusy(true);
+    setJoinError("");
+    try {
+      const inviteSnapshot = await getDoc(doc(db, "householdInvites", code));
+
+      if (!inviteSnapshot.exists()) {
+        setJoinError("No household found for that invite code.");
+        return;
+      }
+
+      const invite = inviteSnapshot.data();
+      const householdId = invite.householdId;
+      if (!householdId) {
+        setJoinError("No household found for that invite code.");
+        return;
+      }
+
+      const existingHousehold = memberships.find((household) => household.id === householdId);
+
+      if (existingHousehold) {
+        onSelect(existingHousehold.id);
+        setInviteCode("");
+        setJoinError("You are already in that household.");
+        return;
+      }
+
+      const householdSummary = {
+        name: invite.name || "Household",
+        role: "member",
+        inviteCode: invite.inviteCode || code,
+      };
+      const memberRef = doc(db, "households", householdId, "members", user.uid);
+      const userHouseholdRef = doc(db, "users", user.uid, "households", householdId);
+      const batch = writeBatch(db);
+
+      batch.set(memberRef, {
+        uid: user.uid,
+        displayName: user.displayName || "",
+        email: user.email || "",
+        photoURL: user.photoURL || "",
+        role: "member",
+        inviteCode: code,
+        joinedAt: serverTimestamp(),
+      });
+      batch.set(userHouseholdRef, {
+        ...householdSummary,
+        householdId,
+        joinedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      await batch.commit();
+      onCreated({ id: householdId, ...householdSummary });
+      onSelect(householdId);
+      setInviteCode("");
+    } catch (err) {
+      setJoinError(err.message || "Could not join household.");
+    } finally {
+      setJoinBusy(false);
+    }
+  };
+
   return (
     <>
       <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">QuickStock</p>
           <h1 className="text-2xl font-bold text-slate-950">
-            {memberships.find((household) => household.id === selectedId)?.name || "Household inventory"}
+            {selectedHousehold?.name || "Household inventory"}
           </h1>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -671,22 +779,58 @@ function HouseholdBar({
       </header>
 
       <section className="mb-4 rounded-xl bg-white p-3 shadow">
-        <form onSubmit={createHousehold} className="flex gap-2">
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={loading ? "Loading households..." : "New household name"}
-            className="min-w-0 flex-1 rounded border border-slate-200 px-3 py-2 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={busy || !name.trim()}
-            className="rounded bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            Create
-          </button>
-        </form>
+        {selectedInviteCode && (
+          <div className="mb-3 flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invite code</p>
+              <p className="font-mono text-sm font-semibold text-slate-950">{selectedInviteCode}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {copyMessage && <span className="text-xs text-slate-500">{copyMessage}</span>}
+              <button
+                type="button"
+                onClick={copyInviteCode}
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                Copy invite code
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <form onSubmit={createHousehold} className="flex gap-2">
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={loading ? "Loading households..." : "New household name"}
+              className="min-w-0 flex-1 rounded border border-slate-200 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={busy || !name.trim()}
+              className="rounded bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Create
+            </button>
+          </form>
+          <form onSubmit={joinHousehold} className="flex gap-2">
+            <input
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value)}
+              placeholder="Invite code"
+              className="min-w-0 flex-1 rounded border border-slate-200 px-3 py-2 text-sm uppercase"
+            />
+            <button
+              type="submit"
+              disabled={joinBusy || !inviteCode.trim()}
+              className="rounded border border-slate-900 bg-white px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+            >
+              Join
+            </button>
+          </form>
+        </div>
         {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
+        {joinError && <p className="mt-2 text-sm text-rose-700">{joinError}</p>}
       </section>
     </>
   );
