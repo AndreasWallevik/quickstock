@@ -37,10 +37,10 @@ const WEEK_DAYS = [
 ];
 const MAIN_VIEWS = [
   { id: "weekly", label: "Weekly Menu" },
-  { id: "overview", label: "Overview" },
-  { id: "inventory", label: "Inventory" },
   { id: "shopping", label: "Shopping List" },
+  { id: "inventory", label: "Inventory" },
   { id: "recipes", label: "Recipes" },
+  { id: "overview", label: "Overview" },
 ];
 const INVENTORY_MODES = [
   { id: "multi", label: "Multi View" },
@@ -342,15 +342,15 @@ const groupStockProducts = (products, groupBy) => {
 
 function ViewSelector({ options, value, onChange }) {
   return (
-    <div className="flex gap-2 overflow-x-auto rounded-xl bg-white p-1 shadow">
+    <div className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200/70 bg-white/90 p-1.5 shadow-sm">
       {options.map((option) => (
         <button
           key={option.id}
           type="button"
           onClick={() => onChange(option.id)}
-          className={`min-h-10 shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
+          className={`min-h-11 shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition ${
             value === option.id
-              ? "bg-black text-white"
+              ? "bg-teal-700 text-white shadow-sm"
               : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
           }`}
         >
@@ -358,6 +358,25 @@ function ViewSelector({ options, value, onChange }) {
         </button>
       ))}
     </div>
+  );
+}
+
+function StatsStrip({ stats }) {
+  return (
+    <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {stats.map((stat) => (
+        <div
+          key={stat.label}
+          className="rounded-2xl border border-slate-200/70 bg-white/90 p-3 shadow-sm"
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {stat.label}
+          </div>
+          <div className="mt-1 text-2xl font-bold text-slate-950">{stat.value}</div>
+          <div className="text-xs text-slate-500">{stat.detail}</div>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -884,10 +903,10 @@ function HouseholdBar({
 
   return (
     <>
-      <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <header className="mb-7 flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">QuickStock</p>
-          <h1 className="text-2xl font-bold text-slate-950">
+          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">QuickStock</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
             {selectedHousehold?.name || "Household inventory"}
           </h1>
         </div>
@@ -898,7 +917,7 @@ function HouseholdBar({
               value={selectedId}
               onChange={(event) => onSelect(event.target.value)}
               disabled={loading || memberships.length === 0}
-              className="min-h-10 min-w-52 rounded border border-slate-300 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
+              className="min-h-11 min-w-52 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
             >
               {loading && memberships.length === 0 ? (
                 <option value="">Loading households...</option>
@@ -917,7 +936,7 @@ function HouseholdBar({
               type="button"
               onClick={showInvite}
               disabled={!selectedHousehold || inviteBusy}
-              className="min-h-10 rounded bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="min-h-11 rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 disabled:opacity-50"
             >
               {inviteBusy ? "Loading..." : "Invite"}
             </button>
@@ -925,14 +944,14 @@ function HouseholdBar({
           <button
             type="button"
             onClick={() => signOut(auth)}
-            className="min-h-10 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
           >
             Sign out
           </button>
         </div>
       </header>
 
-      <section className="mb-4 rounded-xl bg-white p-3 shadow">
+      <section className="mb-6 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
         {isAdmin && inviteOpen && (
           <div className="mb-3 flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -948,7 +967,7 @@ function HouseholdBar({
                 type="button"
                 onClick={copyInviteCode}
                 disabled={inviteBusy || !selectedInviteCode}
-                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
               >
                 Copy invite code
               </button>
@@ -961,12 +980,12 @@ function HouseholdBar({
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder={loading ? "Loading households..." : "New household name"}
-              className="min-w-0 flex-1 rounded border border-slate-200 px-3 py-2 text-sm"
+              className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
             />
             <button
               type="submit"
               disabled={busy || !name.trim()}
-              className="rounded bg-black px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
             >
               Create
             </button>
@@ -976,12 +995,12 @@ function HouseholdBar({
               value={inviteCode}
               onChange={(event) => setInviteCode(event.target.value)}
               placeholder="Invite code"
-              className="min-w-0 flex-1 rounded border border-slate-200 px-3 py-2 text-sm uppercase"
+              className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm uppercase"
             />
             <button
               type="submit"
               disabled={joinBusy || !inviteCode.trim()}
-              className="rounded border border-slate-900 bg-white px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-50 disabled:opacity-50"
             >
               Join
             </button>
@@ -1187,11 +1206,11 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
   };
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-4 shadow">
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm transition hover:shadow-md">
       <div className="mb-3 flex items-start justify-between gap-3">
         <button
           onClick={() => addUnits(1)}
-          className="grid h-20 w-20 shrink-0 touch-manipulation place-items-center rounded-xl bg-slate-100 text-5xl hover:bg-slate-200"
+          className="grid h-20 w-20 shrink-0 touch-manipulation place-items-center rounded-2xl bg-slate-100 text-5xl transition hover:bg-slate-200"
           aria-label={`Add ${product.name}`}
         >
           {product.emoji || pickEmoji(product.name)}
@@ -1212,7 +1231,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
             ))}
           </div>
         </div>
-        <button onClick={() => setManage((value) => !value)} className="min-h-9 rounded border px-2 py-1 text-xs">
+        <button onClick={() => setManage((value) => !value)} className="min-h-9 rounded-xl border px-2 py-1 text-xs font-medium hover:bg-slate-50">
           Manage
         </button>
       </div>
@@ -1264,38 +1283,38 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+        <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50">
           + pack
         </button>
-        <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+        <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50">
           Open
         </button>
         <button
           onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
-          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Empty
         </button>
         <button
           onClick={() => changeSome(["full", "opened"], "expired", 1)}
-          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Expire
         </button>
         <button
           onClick={onAddToShoppingList}
-          className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+          className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50"
         >
           Add to list
         </button>
         {manage && (
           <>
-            <button onClick={onEdit} className="min-h-10 rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+            <button onClick={onEdit} className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50">
               Edit
             </button>
             <button
               onClick={onDelete}
-              className="min-h-10 rounded border border-rose-200 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
+              className="min-h-10 rounded-xl border border-rose-200 px-3 py-1.5 text-sm text-rose-700 hover:bg-rose-50"
             >
               Delete
             </button>
@@ -1349,31 +1368,31 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
   };
 
   return (
-    <div className="relative flex min-h-[360px] flex-col rounded-[2rem] bg-sky-100 p-6 text-center shadow-sm ring-1 ring-sky-200/70">
-      <div className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-black text-sm font-bold text-white shadow-sm">
+    <div className="relative flex min-h-[380px] flex-col rounded-[2rem] bg-teal-50 p-6 text-center shadow-sm ring-1 ring-teal-100 transition hover:shadow-md">
+      <div className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-teal-700 text-sm font-bold text-white shadow-sm">
         {count}
       </div>
 
       <button
         type="button"
         onClick={() => addUnits(1)}
-        className="mx-auto mt-5 grid h-32 w-32 touch-manipulation place-items-center rounded-[1.75rem] bg-white/50 text-7xl shadow-sm hover:bg-white/70"
+        className="mx-auto mt-5 grid h-36 w-36 touch-manipulation place-items-center rounded-[1.75rem] bg-white/75 text-8xl shadow-sm transition hover:bg-white"
         aria-label={`Add ${product.name}`}
       >
         {emoji}
       </button>
 
       <div className="mt-5">
-        <h3 className="mx-auto max-w-[14rem] text-2xl font-bold leading-tight text-slate-950">
+        <h3 className="mx-auto max-w-[14rem] text-2xl font-bold leading-tight tracking-tight text-slate-950">
           {product.name}
         </h3>
         <div className="mt-2 flex min-h-6 flex-wrap justify-center gap-1.5 text-xs">
-          {product.freezer && <span className="rounded-full bg-white/70 px-2 py-0.5 text-slate-700">Frozen</span>}
-          {product.isBase && <span className="rounded-full bg-white/70 px-2 py-0.5 text-slate-700">Basisvare</span>}
+          {product.freezer && <span className="rounded-full bg-white/80 px-2 py-0.5 text-slate-700">Frozen</span>}
+          {product.isBase && <span className="rounded-full bg-white/80 px-2 py-0.5 text-slate-700">Basisvare</span>}
           {expired > 0 && (
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{expired} expired</span>
           )}
-          {soon > 0 && <span className="rounded-full bg-white/70 px-2 py-0.5 text-sky-800">{soon} soon</span>}
+          {soon > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800">{soon} soon</span>}
         </div>
       </div>
 
@@ -1381,21 +1400,21 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
         <button
           type="button"
           onClick={onEdit}
-          className="min-h-10 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
+          className="min-h-11 rounded-full bg-white/85 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
         >
           Edit
         </button>
         <button
           type="button"
           onClick={() => setManage((value) => !value)}
-          className="min-h-10 rounded-full bg-white/80 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
+          className="min-h-11 rounded-full bg-white/85 px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-white"
         >
           Manage
         </button>
         <button
           type="button"
           onClick={() => addUnits(1)}
-          className="grid min-h-10 min-w-10 touch-manipulation place-items-center rounded-full bg-black px-4 py-2 text-lg font-bold text-white shadow-sm hover:bg-slate-800"
+          className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-teal-700 px-4 py-2 text-lg font-bold text-white shadow-sm hover:bg-teal-800"
           aria-label={`Add one ${product.name}`}
         >
           +
@@ -1417,12 +1436,12 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
               key={unit.id}
               type="button"
               onClick={() => cycleUnit(unit.id)}
-              className={`grid h-10 w-10 touch-manipulation place-items-center rounded-full border text-lg shadow-sm ${
+              className={`grid h-11 w-11 touch-manipulation place-items-center rounded-full border text-lg shadow-sm ${
                 unit.state === "opened"
                   ? "border-amber-200 bg-amber-50"
                   : unit.state === "expired"
                     ? "border-rose-200 bg-rose-50"
-                    : "border-white bg-white/75"
+                    : "border-white bg-white/85"
               }`}
               title={unit.state || "full"}
             >
@@ -1431,33 +1450,33 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
           ))
         )}
         {activeUnits.length > displayedUnits.length && (
-          <span className="grid h-10 place-items-center rounded-full bg-white/70 px-3 text-xs font-semibold text-slate-600">
+          <span className="grid h-11 place-items-center rounded-full bg-white/80 px-3 text-xs font-semibold text-slate-600">
             +{activeUnits.length - displayedUnits.length}
           </span>
         )}
       </div>
 
       {manage && (
-        <div className="mt-5 flex flex-wrap justify-center gap-2 border-t border-sky-200/70 pt-4">
-          <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+        <div className="mt-5 flex flex-wrap justify-center gap-2 border-t border-teal-100 pt-4">
+          <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white">
             + pack
           </button>
-          <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+          <button onClick={() => changeSome(["full"], "opened", 1)} className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white">
             Open
           </button>
           <button
             onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
-            className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white"
+            className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white"
           >
             Empty
           </button>
           <button
             onClick={() => changeSome(["full", "opened"], "expired", 1)}
-            className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white"
+            className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white"
           >
             Expire
           </button>
-          <button onClick={onAddToShoppingList} className="min-h-10 rounded-full bg-white/75 px-3 py-1.5 text-sm hover:bg-white">
+          <button onClick={onAddToShoppingList} className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white">
             Add to list
           </button>
           <button
@@ -1523,9 +1542,14 @@ function ShoppingListPanel({
     deleteDoc(doc(db, "households", householdId, "shoppingList", shoppingItemId));
 
   return (
-    <aside className="rounded-xl bg-white p-3 shadow">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="font-semibold">Shopping List</div>
+    <aside className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Shopping
+          </div>
+          <div className="text-lg font-bold text-slate-950">Shopping List</div>
+        </div>
         <label className="flex items-center gap-2 text-xs text-slate-600">
           <input
             type="checkbox"
@@ -1537,15 +1561,15 @@ function ShoppingListPanel({
       </div>
 
       {shoppingLoading ? (
-        <div className="text-sm text-slate-500">Loading list...</div>
+        <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Loading list...</div>
       ) : visibleItems.length === 0 ? (
-        <div className="text-sm text-slate-500">List empty</div>
+        <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">List empty</div>
       ) : (
         <ul className="space-y-2">
           {visibleItems.map((item) => (
             <li
               key={item.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-2 py-2 text-sm"
+              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/70 px-3 py-3 text-sm transition hover:bg-slate-50"
             >
               <label className="flex min-w-0 items-center gap-2">
                 <input
@@ -1560,7 +1584,7 @@ function ShoppingListPanel({
               </label>
               <button
                 onClick={() => deleteShoppingItem(item.id)}
-                className="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
               >
                 Remove
               </button>
@@ -2091,6 +2115,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
   const { plan, loading } = useWeeklyPlan(householdId, selectedWeekId);
   const [generating, setGenerating] = useState(false);
   const [completingDay, setCompletingDay] = useState("");
+  const [undoingDay, setUndoingDay] = useState("");
   const [message, setMessage] = useState("");
   const [openRecipe, setOpenRecipe] = useState(null);
 
@@ -2107,6 +2132,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             recipeId: days[day]?.recipeId || "",
             notes: days[day]?.notes || "",
             consumedAt: days[day]?.consumedAt || null,
+            consumptionUndo: days[day]?.consumptionUndo || [],
             ...patch,
           },
         },
@@ -2118,7 +2144,8 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
     );
   };
 
-  const removeDay = (day) => saveDay(day, { recipeId: "", notes: "", consumedAt: null });
+  const removeDay = (day) =>
+    saveDay(day, { recipeId: "", notes: "", consumedAt: null, consumptionUndo: [] });
 
   const markMealDone = async (day, recipe) => {
     if (!recipe || days[day]?.consumedAt) return;
@@ -2126,8 +2153,16 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
     setCompletingDay(day);
     setMessage("");
     try {
+      const latestPlan = await getDoc(planRef);
+      const latestDay = latestPlan.exists() ? latestPlan.data()?.days?.[day] : null;
+      if (latestDay?.consumedAt) {
+        setMessage("Meal is already marked done.");
+        return;
+      }
+
       const batch = writeBatch(db);
       const skipped = [];
+      const undoRecords = [];
       const requiredByStockItem = new Map();
 
       (recipe.ingredients || []).forEach((ingredient) => {
@@ -2159,14 +2194,21 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
         }
 
         let remaining = required.quantity;
+        const consumedUnits = [];
         const nextUnits = withExpiryApplied(toUnits(stockItem)).map((unit) => {
           if (remaining <= 0 || !canConsumeUnit(unit)) return unit;
           remaining -= 1;
+          consumedUnits.push({ ...unit });
           return { ...unit, state: "empty", emptiedAt: now() };
         });
         const consumed = required.quantity - remaining;
 
         if (consumed > 0) {
+          undoRecords.push({
+            stockItemId: stockItem.id,
+            name: stockItem.name,
+            units: consumedUnits,
+          });
           batch.update(doc(db, "households", householdId, "stockItems", stockItem.id), {
             items: nextUnits,
             quantity: countInStock(nextUnits),
@@ -2188,6 +2230,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
               recipeId: days[day]?.recipeId || recipe.id,
               notes: days[day]?.notes || "",
               consumedAt: serverTimestamp(),
+              consumptionUndo: undoRecords,
             },
           },
           weekId: selectedWeekId,
@@ -2207,6 +2250,112 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
       setMessage(err.message || "Could not mark meal as done.");
     } finally {
       setCompletingDay("");
+    }
+  };
+
+  const undoMealDone = async (day) => {
+    const dayPlan = days[day] || {};
+    if (!dayPlan.consumedAt) return;
+
+    setUndoingDay(day);
+    setMessage("");
+    try {
+      const batch = writeBatch(db);
+      const skipped = [];
+
+      (dayPlan.consumptionUndo || []).forEach((record) => {
+        const stockItem = stockItems.find((item) => item.id === record.stockItemId);
+        if (!stockItem) {
+          skipped.push(`${record.name || "Stock item"}: stock item not found`);
+          return;
+        }
+
+        const restoreById = new Map((record.units || []).map((unit) => [unit.id, unit]));
+        let restored = 0;
+        const nextUnits = toUnits(stockItem).map((unit) => {
+          const original = restoreById.get(unit.id);
+          if (!original) return unit;
+          restored += 1;
+          return original;
+        });
+
+        if (restored > 0) {
+          batch.update(doc(db, "households", householdId, "stockItems", stockItem.id), {
+            items: nextUnits,
+            quantity: countInStock(nextUnits),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        if (restored < (record.units || []).length) {
+          skipped.push(`${stockItem.name}: restored ${restored}/${(record.units || []).length}`);
+        }
+      });
+
+      batch.set(
+        planRef,
+        {
+          days: {
+            ...days,
+            [day]: {
+              recipeId: dayPlan.recipeId || "",
+              notes: dayPlan.notes || "",
+              consumedAt: null,
+              consumptionUndo: [],
+            },
+          },
+          weekId: selectedWeekId,
+          weekStartDate: selectedWeekStartDate,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await batch.commit();
+      setMessage(
+        skipped.length > 0
+          ? `Cooking undone. Some stock could not be fully restored: ${skipped.join("; ")}.`
+          : "Cooking undone. Consumed stock was restored."
+      );
+    } catch (err) {
+      setMessage(err.message || "Could not undo cooking.");
+    } finally {
+      setUndoingDay("");
+    }
+  };
+
+  const clearWeek = async () => {
+    const hasCompletedMeals = WEEK_DAYS.some((day) => days[day]?.consumedAt);
+    if (
+      hasCompletedMeals &&
+      !window.confirm("This week has completed meals. Clear the plan without restoring stock?")
+    ) {
+      return;
+    }
+
+    setMessage("");
+    try {
+      await setDoc(
+        planRef,
+        {
+          days: WEEK_DAYS.reduce((nextDays, day) => {
+            nextDays[day] = {
+              recipeId: "",
+              notes: "",
+              consumedAt: null,
+              consumptionUndo: [],
+            };
+            return nextDays;
+          }, {}),
+          weekId: selectedWeekId,
+          weekStartDate: selectedWeekStartDate,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setMessage("Week cleared.");
+    } catch (err) {
+      setMessage(err.message || "Could not clear week.");
     }
   };
 
@@ -2293,30 +2442,42 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
   };
 
   return (
-    <section className="rounded-xl bg-white p-3 shadow">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className="rounded-2xl border border-teal-100 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="font-semibold">Weekly Menu</div>
-          <div className="text-xs text-slate-500">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-teal-700">
+            Main dashboard
+          </div>
+          <div className="mt-1 text-xl font-bold text-slate-950">Weekly Menu</div>
+          <div className="mt-1 text-xs text-slate-500">
             {selectedWeekId} · starts {selectedWeekStartDate}
           </div>
         </div>
-        <button
-          onClick={generateMissingIngredients}
-          disabled={generating || loading}
-          className="rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-50 disabled:opacity-50"
-        >
-          {generating ? "Generating..." : "Generate Missing Ingredients"}
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            onClick={clearWeek}
+            disabled={loading}
+            className="min-h-10 rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+          >
+            Clear Week
+          </button>
+          <button
+            onClick={generateMissingIngredients}
+            disabled={generating || loading}
+            className="min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+          >
+            {generating ? "Generating..." : "Generate Missing Ingredients"}
+          </button>
+        </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-3 gap-2">
+      <div className="mb-4 grid grid-cols-3 gap-2">
         <button
           onClick={() => {
             setMessage("");
             setSelectedWeekStart((current) => shiftWeek(current, -1));
           }}
-          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
         >
           Previous
         </button>
@@ -2325,7 +2486,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             setMessage("");
             setSelectedWeekStart(getStartOfIsoWeek(new Date()));
           }}
-          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
         >
           This week
         </button>
@@ -2334,13 +2495,13 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             setMessage("");
             setSelectedWeekStart((current) => shiftWeek(current, 1));
           }}
-          className="rounded border border-slate-300 px-2 py-2 text-sm hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
         >
           Next
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {WEEK_DAYS.map((day) => {
           const dayPlan = days[day] || {};
           const recipe = recipes.find((item) => item.id === dayPlan.recipeId);
@@ -2348,15 +2509,15 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
           return (
             <div
               key={day}
-              className={`rounded-lg border p-2 ${
-                consumed ? "border-emerald-200 bg-emerald-50/70" : "border-slate-100"
+              className={`rounded-2xl border p-3 shadow-sm transition hover:shadow-md ${
+                consumed ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"
               }`}
             >
-              <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium capitalize">{day}</div>
+                  <div className="text-base font-bold capitalize text-slate-950">{day}</div>
                   {consumed && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                    <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
                       Completed
                     </span>
                   )}
@@ -2365,26 +2526,39 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
                   <div className="flex shrink-0 gap-2">
                     <button
                       onClick={() => setOpenRecipe(recipe)}
-                      className="rounded border px-2 py-1 text-xs hover:bg-white"
+                      className="min-h-9 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50"
                     >
                       {(recipe.steps || []).length > 0 ? "Start Cooking" : "Open Recipe"}
                     </button>
                     <button
                       onClick={() => markMealDone(day, recipe)}
                       disabled={consumed || completingDay === day}
-                      className="rounded bg-black px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                      className="min-h-9 rounded-xl bg-teal-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-40"
                     >
                       {consumed ? "Done" : completingDay === day ? "Saving..." : "Done Cooking"}
                     </button>
+                    {consumed && (
+                      <button
+                        onClick={() => undoMealDone(day)}
+                        disabled={undoingDay === day}
+                        className="min-h-9 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+                      >
+                        {undoingDay === day ? "Undoing..." : "Undo"}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
               <select
                 value={dayPlan.recipeId || ""}
                 onChange={(event) =>
-                  saveDay(day, { recipeId: event.target.value, consumedAt: null })
+                  saveDay(day, {
+                    recipeId: event.target.value,
+                    consumedAt: null,
+                    consumptionUndo: [],
+                  })
                 }
-                className="mb-2 w-full rounded border px-2 py-1 text-sm"
+                className="mb-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               >
                 <option value="">No recipe</option>
                 {recipes.map((item) => (
@@ -2396,13 +2570,13 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
               <input
                 value={dayPlan.notes || ""}
                 onChange={(event) => saveDay(day, { notes: event.target.value })}
-                className="w-full rounded border px-2 py-1 text-sm"
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                 placeholder="Notes"
               />
               {(dayPlan.recipeId || dayPlan.notes) && (
                 <button
                   onClick={() => removeDay(day)}
-                  className="mt-2 rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                  className="mt-3 min-h-9 rounded-xl border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
                 >
                   Remove
                 </button>
@@ -2423,7 +2597,7 @@ function Inventory({ householdId, householdName }) {
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
   const [mainView, setMainView] = useState("weekly");
-  const [inventoryMode, setInventoryMode] = useState("multi");
+  const [inventoryMode, setInventoryMode] = useState("fridge");
   const [groupBy, setGroupBy] = useState("Category");
   const [soonDays, setSoonDays] = useState(2);
   const [modalOpen, setModalOpen] = useState(false);
@@ -2452,6 +2626,32 @@ function Inventory({ householdId, householdName }) {
       recipeCount: recipes.length,
     };
   }, [items, recipes.length, shoppingItems, soonDays]);
+
+  const statsStripItems = useMemo(
+    () => [
+      {
+        label: "Stock",
+        value: stockSummary.unitCount,
+        detail: `${stockSummary.productCount} products`,
+      },
+      {
+        label: "Shopping",
+        value: stockSummary.shoppingCount,
+        detail: "open items",
+      },
+      {
+        label: "Recipes",
+        value: stockSummary.recipeCount,
+        detail: "saved",
+      },
+      {
+        label: "Attention",
+        value: stockSummary.soonCount + stockSummary.expiredCount,
+        detail: "need attention",
+      },
+    ],
+    [stockSummary]
+  );
 
   const overviewGroups = useMemo(() => groupStockProducts(items, groupBy), [items, groupBy]);
 
@@ -2567,24 +2767,24 @@ function Inventory({ householdId, householdName }) {
   const renderStockCards = (groups, emptyText, fullWidth = false) => (
     <div>
       {loading ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading stock...</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
           <p>Add the first product to start this household inventory.</p>
           <button
             onClick={addDefaultPantryItems}
             disabled={addingTemplate}
-            className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             {addingTemplate ? "Adding..." : "Add default pantry items"}
           </button>
         </div>
       ) : groups.length === 0 ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">{emptyText}</div>
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">{emptyText}</div>
       ) : (
         groups.map(([group, products]) => (
-          <section key={group} className="mb-4">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+          <section key={group} className="mb-6">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               {group} <span className="text-slate-400">({products.length})</span>
             </div>
             <div className={`grid grid-cols-1 gap-4 ${fullWidth ? "md:grid-cols-2 xl:grid-cols-3" : "sm:grid-cols-2"}`}>
@@ -2614,24 +2814,24 @@ function Inventory({ householdId, householdName }) {
   const renderFridgeStockCards = (groups, emptyText) => (
     <div>
       {loading ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">Loading stock...</div>
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading stock...</div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
           <p>Add the first product to start this household inventory.</p>
           <button
             onClick={addDefaultPantryItems}
             disabled={addingTemplate}
-            className="mt-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             {addingTemplate ? "Adding..." : "Add default pantry items"}
           </button>
         </div>
       ) : groups.length === 0 ? (
-        <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">{emptyText}</div>
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">{emptyText}</div>
       ) : (
         groups.map(([group, products]) => (
-          <section key={group} className="mb-6">
-            <div className="mb-2 text-[11px] uppercase tracking-wide text-slate-500">
+          <section key={group} className="mb-8">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               {group} <span className="text-slate-400">({products.length})</span>
             </div>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -2659,23 +2859,25 @@ function Inventory({ householdId, householdName }) {
   );
 
   const renderControls = () => (
-    <div className="mb-4 rounded-xl bg-white p-3 shadow">
+    <div className="mb-5 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             {MAIN_VIEWS.find((view) => view.id === mainView)?.label || "Overview"}
           </p>
-          <h2 className="text-xl font-semibold text-slate-950">{householdName}</h2>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+            {householdName}
+          </h2>
         </div>
         {mainView !== "weekly" && (
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setModalOpen(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
+          <button onClick={() => setModalOpen(true)} className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800">
             + Add Product
           </button>
           <button
             onClick={addDefaultPantryItems}
             disabled={addingTemplate || loading || availableDefaultItems.length === 0}
-            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
           >
             {addingTemplate ? "Adding..." : "Add default pantry items"}
           </button>
@@ -2686,13 +2888,13 @@ function Inventory({ householdId, householdName }) {
               min={1}
               value={soonDays}
               onChange={(event) => setSoonDays(Math.max(1, Number(event.target.value) || 1))}
-              className="w-16 rounded border px-2 py-1"
+              className="w-16 rounded-lg border px-2 py-1"
             />
           </label>
           <select
             value={groupBy}
             onChange={(event) => setGroupBy(event.target.value)}
-            className="rounded border px-2 py-2 text-sm"
+            className="rounded-xl border px-2 py-2 text-sm"
           >
             <option value="Category">Group: Category</option>
             <option value="Label">Group: Label</option>
@@ -2712,7 +2914,7 @@ function Inventory({ householdId, householdName }) {
         <button
           type="button"
           onClick={() => setMainView("inventory")}
-          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
         >
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Stock</div>
           <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.unitCount}</div>
@@ -2721,7 +2923,7 @@ function Inventory({ householdId, householdName }) {
         <button
           type="button"
           onClick={() => setMainView("shopping")}
-          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
         >
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Shopping</div>
           <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.shoppingCount}</div>
@@ -2730,7 +2932,7 @@ function Inventory({ householdId, householdName }) {
         <button
           type="button"
           onClick={() => setMainView("recipes")}
-          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
+          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
         >
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Recipes</div>
           <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.recipeCount}</div>
@@ -2775,14 +2977,14 @@ function Inventory({ householdId, householdName }) {
               hideChecked={hideCheckedShoppingItems}
               setHideChecked={setHideCheckedShoppingItems}
             />
-            <section className="rounded-xl bg-white p-3 shadow">
-              <div className="font-semibold">Soon & Expired</div>
+            <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+              <div className="text-lg font-bold text-slate-950">Soon & Expired</div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-lg bg-sky-50 p-3 text-sky-800">
+                <div className="rounded-xl bg-amber-50 p-3 text-amber-800">
                   <div className="text-2xl font-semibold">{stockSummary.soonCount}</div>
                   <div className="text-xs">Soon</div>
                 </div>
-                <div className="rounded-lg bg-rose-50 p-3 text-rose-800">
+                <div className="rounded-xl bg-rose-50 p-3 text-rose-800">
                   <div className="text-2xl font-semibold">{stockSummary.expiredCount}</div>
                   <div className="text-xs">Expired</div>
                 </div>
@@ -2801,6 +3003,9 @@ function Inventory({ householdId, householdName }) {
       </div>
 
       {renderControls()}
+      <div className="mb-6">
+        <StatsStrip stats={statsStripItems} />
+      </div>
 
       {mainView === "overview" && renderOverview()}
       {mainView === "inventory" && renderInventoryView()}
@@ -2910,7 +3115,7 @@ export default function App() {
   const selectedHousehold = availableHouseholds.find((household) => household.id === selectedHouseholdId);
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 p-4 sm:p-6">
+    <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="mx-auto max-w-6xl">
         <HouseholdBar
           user={user}
@@ -2932,7 +3137,7 @@ export default function App() {
             householdName={selectedHousehold.name || "Household"}
           />
         ) : (
-          <section className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow">
+          <section className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
             Create a household to start tracking stock.
           </section>
         )}
