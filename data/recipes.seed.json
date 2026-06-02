@@ -1,0 +1,1365 @@
+[
+  {
+    "name": "Taco",
+    "emoji": "🌮",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tortillalefser",
+        "nameSnapshot": "Tortillalefser",
+        "quantity": 8,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tacokrydder",
+        "nameSnapshot": "Tacokrydder",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "rmme",
+        "nameSnapshot": "Rømme",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "salat",
+        "nameSnapshot": "Salat",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "mais",
+        "nameSnapshot": "Mais",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek kjøttdeig.",
+      "Tilsett tacokrydder og litt vann.",
+      "Varm tortillalefser.",
+      "Kutt salat og server med rømme og mais."
+    ],
+    "id": "taco"
+  },
+  {
+    "name": "Tacobowl",
+    "emoji": "🥣",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tacokrydder",
+        "nameSnapshot": "Tacokrydder",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "mais",
+        "nameSnapshot": "Mais",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "avokado",
+        "nameSnapshot": "Avokado",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "rmme",
+        "nameSnapshot": "Rømme",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kjøttdeig med tacokrydder.",
+      "Kutt topping.",
+      "Legg ris, kjøtt og topping i bowls."
+    ],
+    "id": "tacobowl"
+  },
+  {
+    "name": "Burrito Bowl",
+    "emoji": "🌯",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "mais",
+        "nameSnapshot": "Mais",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "paprika",
+        "nameSnapshot": "Paprika",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "avokado",
+        "nameSnapshot": "Avokado",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "rmme",
+        "nameSnapshot": "Rømme",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling i krydder.",
+      "Kutt grønnsaker.",
+      "Server alt i bowls."
+    ],
+    "id": "burrito-bowl"
+  },
+  {
+    "name": "Nachos Supreme",
+    "emoji": "🧀",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tacokrydder",
+        "nameSnapshot": "Tacokrydder",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 200,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "mais",
+        "nameSnapshot": "Mais",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "rmme",
+        "nameSnapshot": "Rømme",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek kjøttdeig med tacokrydder.",
+      "Legg chips, kjøtt og ost i form.",
+      "Gratiner til osten smelter.",
+      "Server med mais og rømme."
+    ],
+    "id": "nachos-supreme"
+  },
+  {
+    "name": "Chicken Tacos",
+    "emoji": "🍗",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tortillalefser",
+        "nameSnapshot": "Tortillalefser",
+        "quantity": 8,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "paprika",
+        "nameSnapshot": "Paprika",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "salat",
+        "nameSnapshot": "Salat",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "rmme",
+        "nameSnapshot": "Rømme",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek kylling i strimler.",
+      "Kutt paprika og salat.",
+      "Varm lefser.",
+      "Fyll lefser og server."
+    ],
+    "id": "chicken-tacos"
+  },
+  {
+    "name": "Spaghetti Bolognese",
+    "emoji": "🍝",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "spaghetti",
+        "nameSnapshot": "Spaghetti",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "hvitlk",
+        "nameSnapshot": "Hvitløk",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok spaghetti.",
+      "Stek kjøttdeig, løk og hvitløk.",
+      "Tilsett passata og la småkoke.",
+      "Server med spaghetti."
+    ],
+    "id": "spaghetti-bolognese"
+  },
+  {
+    "name": "Carbonara",
+    "emoji": "🥓",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "spaghetti",
+        "nameSnapshot": "Spaghetti",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "bacon",
+        "nameSnapshot": "Bacon",
+        "quantity": 150,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "egg",
+        "nameSnapshot": "Egg",
+        "quantity": 3,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "parmesan",
+        "nameSnapshot": "Parmesan",
+        "quantity": 80,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "pepper",
+        "nameSnapshot": "Pepper",
+        "quantity": 5,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok spaghetti.",
+      "Stek bacon.",
+      "Pisk egg og parmesan.",
+      "Vend pasta med bacon og eggeblanding av varmen."
+    ],
+    "id": "carbonara"
+  },
+  {
+    "name": "Penne Arrabbiata",
+    "emoji": "🍅",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pasta",
+        "nameSnapshot": "Pasta",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "hvitlk",
+        "nameSnapshot": "Hvitløk",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "olivenolje",
+        "nameSnapshot": "Olivenolje",
+        "quantity": 30,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "parmesan",
+        "nameSnapshot": "Parmesan",
+        "quantity": 50,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok pasta.",
+      "Stek hvitløk i olje.",
+      "Tilsett passata og chili/krydder om ønskelig.",
+      "Vend inn pasta og topp med parmesan."
+    ],
+    "id": "penne-arrabbiata"
+  },
+  {
+    "name": "Baked Ziti",
+    "emoji": "🧀",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pasta",
+        "nameSnapshot": "Pasta",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok pasta nesten ferdig.",
+      "Lag kjøttsaus.",
+      "Bland pasta og saus i form.",
+      "Topp med ost og gratiner."
+    ],
+    "id": "baked-ziti"
+  },
+  {
+    "name": "Kremet Kyllingpasta",
+    "emoji": "🍗",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pasta",
+        "nameSnapshot": "Pasta",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 300,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "parmesan",
+        "nameSnapshot": "Parmesan",
+        "quantity": 70,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "brokkoli",
+        "nameSnapshot": "Brokkoli",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok pasta og brokkoli.",
+      "Stek kylling.",
+      "Tilsett fløte og parmesan.",
+      "Vend inn pasta."
+    ],
+    "id": "kremet-kyllingpasta"
+  },
+  {
+    "name": "Kyllingwok",
+    "emoji": "🥡",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "brokkoli",
+        "nameSnapshot": "Brokkoli",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "paprika",
+        "nameSnapshot": "Paprika",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "soyasaus",
+        "nameSnapshot": "Soyasaus",
+        "quantity": 50,
+        "unit": "ml",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling.",
+      "Wok grønnsaker raskt.",
+      "Tilsett soyasaus og server med ris."
+    ],
+    "id": "kyllingwok"
+  },
+  {
+    "name": "Teriyaki Noodles",
+    "emoji": "🍜",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "nudler",
+        "nameSnapshot": "Nudler",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "soyasaus",
+        "nameSnapshot": "Soyasaus",
+        "quantity": 60,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "sweet-chili-saus",
+        "nameSnapshot": "Sweet chili saus",
+        "quantity": 80,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "brokkoli",
+        "nameSnapshot": "Brokkoli",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok nudler.",
+      "Stek kylling.",
+      "Tilsett grønnsaker og saus.",
+      "Vend inn nudler."
+    ],
+    "id": "teriyaki-noodles"
+  },
+  {
+    "name": "Fried Rice",
+    "emoji": "🍚",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "egg",
+        "nameSnapshot": "Egg",
+        "quantity": 3,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "soyasaus",
+        "nameSnapshot": "Soyasaus",
+        "quantity": 50,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "gulrot",
+        "nameSnapshot": "Gulrot",
+        "quantity": 200,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris eller bruk rester.",
+      "Stek kylling og gulrot.",
+      "Tilsett ris og soyasaus.",
+      "Rør inn egg til slutt."
+    ],
+    "id": "fried-rice"
+  },
+  {
+    "name": "Sticky Chicken Bowl",
+    "emoji": "🍗",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "soyasaus",
+        "nameSnapshot": "Soyasaus",
+        "quantity": 60,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "sweet-chili-saus",
+        "nameSnapshot": "Sweet chili saus",
+        "quantity": 80,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "agurk",
+        "nameSnapshot": "Agurk",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling.",
+      "Glaser med soyasaus og sweet chili.",
+      "Server med agurk."
+    ],
+    "id": "sticky-chicken-bowl"
+  },
+  {
+    "name": "Sweet Chili Chicken",
+    "emoji": "🌶️",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "sweet-chili-saus",
+        "nameSnapshot": "Sweet chili saus",
+        "quantity": 100,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "paprika",
+        "nameSnapshot": "Paprika",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling og paprika.",
+      "Tilsett sweet chili.",
+      "Server varmt."
+    ],
+    "id": "sweet-chili-chicken"
+  },
+  {
+    "name": "Butter Chicken",
+    "emoji": "🍛",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "butter-chicken-saus",
+        "nameSnapshot": "Butter chicken saus",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 100,
+        "unit": "ml",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling.",
+      "Tilsett saus og fløte.",
+      "La småkoke og server."
+    ],
+    "id": "butter-chicken"
+  },
+  {
+    "name": "Chicken Korma",
+    "emoji": "🥘",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "korma-saus",
+        "nameSnapshot": "Korma saus",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kokosmelk",
+        "nameSnapshot": "Kokosmelk",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling.",
+      "Tilsett korma saus og kokosmelk.",
+      "La småkoke."
+    ],
+    "id": "chicken-korma"
+  },
+  {
+    "name": "Chicken Biryani",
+    "emoji": "🍚",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 350,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "garam-masala",
+        "nameSnapshot": "Garam masala",
+        "quantity": 10,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "karri",
+        "nameSnapshot": "Karri",
+        "quantity": 10,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek løk og kylling med krydder.",
+      "Kok ris halvveis.",
+      "Legg kylling og ris lagvis.",
+      "Damp ferdig under lokk."
+    ],
+    "id": "chicken-biryani"
+  },
+  {
+    "name": "Tikka Masala",
+    "emoji": "🍛",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 200,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "garam-masala",
+        "nameSnapshot": "Garam masala",
+        "quantity": 10,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Stek kylling med krydder.",
+      "Tilsett passata og fløte.",
+      "La småkoke."
+    ],
+    "id": "tikka-masala"
+  },
+  {
+    "name": "Mac & Cheese",
+    "emoji": "🧀",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pasta",
+        "nameSnapshot": "Pasta",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "melk",
+        "nameSnapshot": "Melk",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "smr",
+        "nameSnapshot": "Smør",
+        "quantity": 50,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "hvetemel",
+        "nameSnapshot": "Hvetemel",
+        "quantity": 40,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok pasta.",
+      "Lag hvit saus med smør, mel og melk.",
+      "Rør inn ost.",
+      "Bland med pasta."
+    ],
+    "id": "mac-cheese"
+  },
+  {
+    "name": "Kjøttdeiggrateng",
+    "emoji": "🥔",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "poteter",
+        "nameSnapshot": "Poteter",
+        "quantity": 800,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 300,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 200,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Skjær poteter i skiver.",
+      "Stek kjøttdeig og løk.",
+      "Legg lagvis i form med fløte.",
+      "Topp med ost og stek."
+    ],
+    "id": "kjttdeiggrateng"
+  },
+  {
+    "name": "Lasagne",
+    "emoji": "🍝",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "melk",
+        "nameSnapshot": "Melk",
+        "quantity": 500,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "hvetemel",
+        "nameSnapshot": "Hvetemel",
+        "quantity": 50,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Lag kjøttsaus.",
+      "Lag hvit saus.",
+      "Legg lagvis med pastaplater hvis tilgjengelig.",
+      "Topp med ost og stek."
+    ],
+    "id": "lasagne"
+  },
+  {
+    "name": "Gratinert Kyllingpasta",
+    "emoji": "🧀",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 600,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "pasta",
+        "nameSnapshot": "Pasta",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 300,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "brokkoli",
+        "nameSnapshot": "Brokkoli",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok pasta og brokkoli.",
+      "Stek kylling.",
+      "Bland med fløte i form.",
+      "Topp med ost og gratiner."
+    ],
+    "id": "gratinert-kyllingpasta"
+  },
+  {
+    "name": "Pepperonipizza",
+    "emoji": "🍕",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pizzabunn",
+        "nameSnapshot": "Pizzabunn",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "passata",
+        "nameSnapshot": "Passata",
+        "quantity": 200,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "pepperoni",
+        "nameSnapshot": "Pepperoni",
+        "quantity": 100,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Smør passata på pizzabunn.",
+      "Topp med ost og pepperoni.",
+      "Stek til gyllen."
+    ],
+    "id": "pepperonipizza"
+  },
+  {
+    "name": "Taco Pizza",
+    "emoji": "🍕",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "pizzabunn",
+        "nameSnapshot": "Pizzabunn",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "kjttdeig",
+        "nameSnapshot": "Kjøttdeig",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "tacokrydder",
+        "nameSnapshot": "Tacokrydder",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ost",
+        "nameSnapshot": "Ost",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "mais",
+        "nameSnapshot": "Mais",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek kjøttdeig med tacokrydder.",
+      "Fordel på pizzabunn med ost og mais.",
+      "Stek til gyllen."
+    ],
+    "id": "taco-pizza"
+  },
+  {
+    "name": "Coq au Vin",
+    "emoji": "🍷",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "kyllingfilet",
+        "nameSnapshot": "Kyllingfilet",
+        "quantity": 700,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "bacon",
+        "nameSnapshot": "Bacon",
+        "quantity": 150,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "vin",
+        "nameSnapshot": "Vin",
+        "quantity": 300,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "sopp",
+        "nameSnapshot": "Sopp",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "gulrot",
+        "nameSnapshot": "Gulrot",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Stek bacon og kylling.",
+      "Tilsett grønnsaker og sopp.",
+      "Hell over vin og litt vann/buljong.",
+      "La småkoke til mørt."
+    ],
+    "id": "coq-au-vin"
+  },
+  {
+    "name": "Beef Stroganoff",
+    "emoji": "🥩",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "hyrygg",
+        "nameSnapshot": "Høyrygg",
+        "quantity": 500,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "sopp",
+        "nameSnapshot": "Sopp",
+        "quantity": 250,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "flte",
+        "nameSnapshot": "Fløte",
+        "quantity": 300,
+        "unit": "ml",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "ris",
+        "nameSnapshot": "Ris",
+        "quantity": 300,
+        "unit": "g",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Kok ris.",
+      "Brun kjøttet.",
+      "Stek løk og sopp.",
+      "Tilsett fløte og la småkoke."
+    ],
+    "id": "beef-stroganoff"
+  },
+  {
+    "name": "Langtidskokt Høyrygggryte",
+    "emoji": "🥘",
+    "servings": 4,
+    "ingredients": [
+      {
+        "stockItemId": "hyrygg",
+        "nameSnapshot": "Høyrygg",
+        "quantity": 700,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "gulrot",
+        "nameSnapshot": "Gulrot",
+        "quantity": 400,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "poteter",
+        "nameSnapshot": "Poteter",
+        "quantity": 800,
+        "unit": "g",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "lk",
+        "nameSnapshot": "Løk",
+        "quantity": 2,
+        "unit": "pcs",
+        "needsReview": false
+      },
+      {
+        "stockItemId": "hermetiske-tomater",
+        "nameSnapshot": "Hermetiske tomater",
+        "quantity": 1,
+        "unit": "pcs",
+        "needsReview": false
+      }
+    ],
+    "steps": [
+      "Brun høyrygg.",
+      "Tilsett grønnsaker og tomater.",
+      "La småkoke lenge til kjøttet er mørt.",
+      "Smak til med salt og pepper."
+    ],
+    "id": "langtidskokt-hyrygggryte"
+  }
+]

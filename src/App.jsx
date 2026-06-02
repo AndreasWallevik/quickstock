@@ -171,6 +171,9 @@ const DEFAULT_PANTRY_ITEMS = [
   { name: "Potatoes", emoji: "🥔", packSize: 1, shelfLifeDays: 45 },
 ];
 
+const ACTIVE_HOUSEHOLD_STORAGE_PREFIX = "quickstock.activeHouseholdId";
+const OPTIMISTIC_HOUSEHOLD_GRACE_MS = 15000;
+
 const makeInviteCode = () => `HOUSE-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 const now = () => Date.now();
 const genId = () =>
@@ -183,6 +186,30 @@ const normalize = (value = "") =>
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+
+const activeHouseholdStorageKey = (userId) => `${ACTIVE_HOUSEHOLD_STORAGE_PREFIX}.${userId}`;
+
+const readStoredHouseholdId = (userId) => {
+  if (!userId || typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(activeHouseholdStorageKey(userId)) || "";
+  } catch {
+    return "";
+  }
+};
+
+const writeStoredHouseholdId = (userId, householdId) => {
+  if (!userId || typeof window === "undefined") return;
+  try {
+    if (householdId) {
+      window.localStorage.setItem(activeHouseholdStorageKey(userId), householdId);
+    } else {
+      window.localStorage.removeItem(activeHouseholdStorageKey(userId));
+    }
+  } catch {
+    // localStorage can be unavailable in private or restricted browser contexts.
+  }
+};
 
 const pickEmoji = (name = "") => {
   const normalized = normalize(name);
@@ -329,32 +356,33 @@ function useAuthUser() {
 }
 
 function useHouseholds(user) {
-  const [memberships, setMemberships] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const userId = user?.uid || "";
+  const [state, setState] = useState({ memberships: [], loading: false, userId: "" });
 
   useEffect(() => {
-    if (!user || !db) {
-      setMemberships([]);
-      setLoading(false);
+    if (!userId || !db) {
+      setState({ memberships: [], loading: false, userId });
       return undefined;
     }
 
-    setLoading(true);
-    const membershipsQuery = query(collection(db, "users", user.uid, "households"), orderBy("name"));
+    setState({ memberships: [], loading: true, userId });
+    const membershipsQuery = query(collection(db, "users", userId, "households"), orderBy("name"));
     return onSnapshot(
       membershipsQuery,
       (snapshot) => {
-        setMemberships(snapshot.docs.map((itemDoc) => ({ id: itemDoc.id, ...itemDoc.data() })));
-        setLoading(false);
+        setState({
+          memberships: snapshot.docs.map((itemDoc) => ({ id: itemDoc.id, ...itemDoc.data() })),
+          loading: false,
+          userId,
+        });
       },
       () => {
-        setMemberships([]);
-        setLoading(false);
+        setState({ memberships: [], loading: false, userId });
       }
     );
-  }, [user]);
+  }, [userId]);
 
-  return { memberships, loading };
+  return state;
 }
 
 function useStockItems(householdId) {
@@ -611,11 +639,31 @@ function HouseholdBar({
             {memberships.find((household) => household.id === selectedId)?.name || "Household inventory"}
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+            Household
+            <select
+              value={selectedId}
+              onChange={(event) => onSelect(event.target.value)}
+              disabled={loading || memberships.length === 0}
+              className="min-h-10 min-w-52 rounded border border-slate-300 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
+            >
+              {loading && memberships.length === 0 ? (
+                <option value="">Loading households...</option>
+              ) : memberships.length === 0 ? (
+                <option value="">No households yet</option>
+              ) : null}
+              {memberships.map((household) => (
+                <option key={household.id} value={household.id}>
+                  {household.name || "Household"}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => signOut(auth)}
-            className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+            className="min-h-10 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
           >
             Sign out
           </button>
@@ -623,23 +671,7 @@ function HouseholdBar({
       </header>
 
       <section className="mb-4 rounded-xl bg-white p-3 shadow">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {memberships.map((household) => (
-            <button
-              key={household.id}
-              type="button"
-              onClick={() => onSelect(household.id)}
-              className={`shrink-0 rounded-full border px-3 py-2 text-sm ${
-                household.id === selectedId
-                  ? "border-black bg-black text-white"
-                  : "border-slate-200 bg-white text-slate-700"
-              }`}
-            >
-              {household.name}
-            </button>
-          ))}
-        </div>
-        <form onSubmit={createHousehold} className="mt-3 flex gap-2">
+        <form onSubmit={createHousehold} className="flex gap-2">
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -2393,8 +2425,13 @@ function Inventory({ householdId, householdName }) {
 
 export default function App() {
   const { user, loading: authLoading } = useAuthUser();
-  const { memberships, loading: householdsLoading } = useHouseholds(user);
+  const {
+    memberships,
+    loading: householdsLoading,
+    userId: householdsUserId,
+  } = useHouseholds(user);
   const [selectedHouseholdId, setSelectedHouseholdId] = useState("");
+  const [selectionLoadedForUserId, setSelectionLoadedForUserId] = useState("");
   const [createdHouseholds, setCreatedHouseholds] = useState([]);
 
   const availableHouseholds = useMemo(() => {
@@ -2406,10 +2443,58 @@ export default function App() {
   }, [createdHouseholds, memberships]);
 
   useEffect(() => {
-    if (!selectedHouseholdId && availableHouseholds.length > 0) {
+    if (!user?.uid) {
+      setSelectedHouseholdId("");
+      setSelectionLoadedForUserId("");
+      setCreatedHouseholds([]);
+      return;
+    }
+
+    setSelectedHouseholdId(readStoredHouseholdId(user.uid));
+    setSelectionLoadedForUserId(user.uid);
+    setCreatedHouseholds([]);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || selectionLoadedForUserId !== user.uid || householdsUserId !== user.uid) return;
+    if (householdsLoading) return;
+
+    if (availableHouseholds.length === 0) {
+      if (selectedHouseholdId) setSelectedHouseholdId("");
+      return;
+    }
+
+    if (
+      !selectedHouseholdId ||
+      !availableHouseholds.some((household) => household.id === selectedHouseholdId)
+    ) {
       setSelectedHouseholdId(availableHouseholds[0].id);
     }
-  }, [availableHouseholds, selectedHouseholdId]);
+  }, [
+    availableHouseholds,
+    householdsLoading,
+    householdsUserId,
+    selectedHouseholdId,
+    selectionLoadedForUserId,
+    user?.uid,
+  ]);
+
+  useEffect(() => {
+    if (!user?.uid || selectionLoadedForUserId !== user.uid) return;
+    writeStoredHouseholdId(user.uid, selectedHouseholdId);
+  }, [selectedHouseholdId, selectionLoadedForUserId, user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || householdsUserId !== user.uid || householdsLoading) return;
+
+    const membershipIds = new Set(memberships.map((household) => household.id));
+    setCreatedHouseholds((current) =>
+      current.filter((household) => {
+        if (membershipIds.has(household.id)) return false;
+        return now() - (household.optimisticCreatedAt || 0) < OPTIMISTIC_HOUSEHOLD_GRACE_MS;
+      })
+    );
+  }, [householdsLoading, householdsUserId, memberships, user?.uid]);
 
   if (!firebaseReady) return <MissingFirebaseConfig />;
   if (authLoading) {
@@ -2434,7 +2519,7 @@ export default function App() {
           loading={householdsLoading}
           onCreated={(household) =>
             setCreatedHouseholds((current) => [
-              household,
+              { ...household, optimisticCreatedAt: now() },
               ...current.filter((item) => item.id !== household.id),
             ])
           }
