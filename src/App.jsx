@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import {
+  getRedirectResult,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from "firebase/auth";
 import {
   addDoc,
   collection,
@@ -29,16 +36,15 @@ const WEEK_DAYS = [
   "sunday",
 ];
 const MAIN_VIEWS = [
+  { id: "weekly", label: "Weekly Menu" },
   { id: "overview", label: "Overview" },
   { id: "inventory", label: "Inventory" },
   { id: "shopping", label: "Shopping List" },
   { id: "recipes", label: "Recipes" },
-  { id: "weekly", label: "Weekly Menu" },
 ];
 const INVENTORY_MODES = [
   { id: "multi", label: "Multi View" },
   { id: "fridge", label: "Fridge View" },
-  { id: "expiring", label: "Expiring Soon View" },
 ];
 
 const toDateInputValue = (date) => {
@@ -199,6 +205,21 @@ const readStoredHouseholdId = (userId) => {
   }
 };
 
+const shouldUseRedirectSignIn = () => {
+  if (typeof navigator === "undefined") return false;
+  const userAgent = navigator.userAgent || "";
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+};
+
+const authErrorMessage = (err) => {
+  if (err?.code === "auth/account-exists-with-different-credential") {
+    const provider = GoogleAuthProvider.credentialFromError(err);
+    return provider ? "Use the Google account already linked to this email." : err.message;
+  }
+
+  return err?.message || "Could not sign in.";
+};
+
 const writeStoredHouseholdId = (userId, householdId) => {
   if (!userId || typeof window === "undefined") return;
   try {
@@ -249,6 +270,8 @@ const countInStock = (units) =>
       count + (["full", "opened", "expired"].includes(unit.state || "full") ? 1 : 0),
     0
   );
+
+const canConsumeUnit = (unit) => ["full", "opened", "expired"].includes(unit.state || "full");
 
 const soonCount = (units, days = 2, t = now()) => {
   const cutoff = t + days * DAY;
@@ -341,19 +364,44 @@ function ViewSelector({ options, value, onChange }) {
 function useAuthUser() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [redirectError, setRedirectError] = useState("");
 
   useEffect(() => {
     if (!auth) {
       setLoading(false);
       return undefined;
     }
-    return onAuthStateChanged(auth, (nextUser) => {
+
+    let active = true;
+    let authReady = false;
+    let redirectReady = false;
+    const finishLoading = () => {
+      if (active && authReady && redirectReady) setLoading(false);
+    };
+
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      if (!active) return;
       setUser(nextUser);
-      setLoading(false);
+      authReady = true;
+      finishLoading();
     });
+
+    getRedirectResult(auth)
+      .catch((err) => {
+        if (active) setRedirectError(authErrorMessage(err));
+      })
+      .finally(() => {
+        redirectReady = true;
+        finishLoading();
+      });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
-  return { user, loading };
+  return { user, loading, redirectError };
 }
 
 function useHouseholds(user) {
@@ -526,22 +574,26 @@ function MissingFirebaseConfig() {
   );
 }
 
-function SignInScreen() {
+function SignInScreen({ authError = "" }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setError(authError);
+  }, [authError]);
 
   const signIn = async () => {
     setBusy(true);
     setError("");
     try {
+      if (shouldUseRedirectSignIn()) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      if (err?.code === "auth/account-exists-with-different-credential") {
-        const provider = GoogleAuthProvider.credentialFromError(err);
-        setError(provider ? "Use the Google account already linked to this email." : err.message);
-      } else {
-        setError(err.message || "Could not sign in.");
-      }
+      setError(authErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -580,16 +632,56 @@ function HouseholdBar({
   const [inviteCode, setInviteCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [joinBusy, setJoinBusy] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
+  const [inviteError, setInviteError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [householdDetails, setHouseholdDetails] = useState(null);
+  const [memberDetails, setMemberDetails] = useState(null);
+  const [inviteCodeOverride, setInviteCodeOverride] = useState("");
 
   const selectedHousehold = memberships.find((household) => household.id === selectedId);
-  const selectedInviteCode = selectedHousehold?.inviteCode || "";
+  const currentRole = memberDetails?.role || selectedHousehold?.role || "";
+  const isAdmin = currentRole === "admin";
+  const selectedInviteCode =
+    inviteCodeOverride || selectedHousehold?.inviteCode || householdDetails?.inviteCode || "";
 
   useEffect(() => {
     setCopyMessage("");
-  }, [selectedInviteCode]);
+    setInviteError("");
+    setInviteOpen(false);
+    setInviteCodeOverride("");
+    setHouseholdDetails(null);
+    setMemberDetails(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || !db) {
+      setHouseholdDetails(null);
+      return undefined;
+    }
+
+    return onSnapshot(
+      doc(db, "households", selectedId),
+      (snapshot) => setHouseholdDetails(snapshot.exists() ? snapshot.data() : null),
+      () => setHouseholdDetails(null),
+    );
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId || !user?.uid || !db) {
+      setMemberDetails(null);
+      return undefined;
+    }
+
+    return onSnapshot(
+      doc(db, "households", selectedId, "members", user.uid),
+      (snapshot) => setMemberDetails(snapshot.exists() ? snapshot.data() : null),
+      () => setMemberDetails(null),
+    );
+  }, [selectedId, user?.uid]);
 
   const createHousehold = async (event) => {
     event.preventDefault();
@@ -649,24 +741,76 @@ function HouseholdBar({
     }
   };
 
-  const copyInviteCode = async () => {
-    if (!selectedHousehold || !selectedInviteCode) return;
+  const ensureInviteCode = async () => {
+    if (!selectedHousehold || !isAdmin) return "";
 
+    const code = selectedInviteCode || makeInviteCode();
+    const householdName =
+      householdDetails?.name || selectedHousehold.name || "Household";
+    const batch = writeBatch(db);
+
+    if (!selectedInviteCode) {
+      batch.update(doc(db, "households", selectedHousehold.id), {
+        inviteCode: code,
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    batch.set(
+      doc(db, "users", user.uid, "households", selectedHousehold.id),
+      {
+        householdId: selectedHousehold.id,
+        name: householdName,
+        role: currentRole || "admin",
+        inviteCode: code,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+    batch.set(
+      doc(db, "householdInvites", code),
+      {
+        householdId: selectedHousehold.id,
+        name: householdName,
+        inviteCode: code,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    await batch.commit();
+    setInviteCodeOverride(code);
+    return code;
+  };
+
+  const showInvite = async () => {
+    if (!isAdmin) return;
+
+    setInviteOpen(true);
+    setInviteBusy(true);
+    setInviteError("");
     setCopyMessage("");
     try {
-      await setDoc(
-        doc(db, "householdInvites", selectedInviteCode),
-        {
-          householdId: selectedHousehold.id,
-          name: selectedHousehold.name || "Household",
-          inviteCode: selectedInviteCode,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-      await navigator.clipboard.writeText(selectedInviteCode);
+      await ensureInviteCode();
+    } catch (err) {
+      setInviteError(err.message || "Could not load invite code.");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const copyInviteCode = async () => {
+    if (!selectedHousehold || !isAdmin) return;
+
+    setCopyMessage("");
+    setInviteError("");
+    try {
+      const code = await ensureInviteCode();
+      if (!code) return;
+      await navigator.clipboard.writeText(code);
       setCopyMessage("Copied");
-    } catch {
+    } catch (err) {
+      setInviteError(err.message || "Could not copy invite code.");
       setCopyMessage("Copy failed");
     }
   };
@@ -768,6 +912,16 @@ function HouseholdBar({
               ))}
             </select>
           </label>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={showInvite}
+              disabled={!selectedHousehold || inviteBusy}
+              className="min-h-10 rounded bg-black px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {inviteBusy ? "Loading..." : "Invite"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => signOut(auth)}
@@ -779,17 +933,21 @@ function HouseholdBar({
       </header>
 
       <section className="mb-4 rounded-xl bg-white p-3 shadow">
-        {selectedInviteCode && (
+        {isAdmin && inviteOpen && (
           <div className="mb-3 flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invite code</p>
-              <p className="font-mono text-sm font-semibold text-slate-950">{selectedInviteCode}</p>
+              <p className="font-mono text-sm font-semibold text-slate-950">
+                {selectedInviteCode || "Loading..."}
+              </p>
+              {inviteError && <p className="mt-1 text-sm text-rose-700">{inviteError}</p>}
             </div>
             <div className="flex items-center gap-2">
               {copyMessage && <span className="text-xs text-slate-500">{copyMessage}</span>}
               <button
                 type="button"
                 onClick={copyInviteCode}
+                disabled={inviteBusy || !selectedInviteCode}
                 className="rounded border border-slate-300 bg-white px-3 py-2 text-sm"
               >
                 Copy invite code
@@ -1932,6 +2090,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
   const selectedWeekStartDate = toDateInputValue(selectedWeekStart);
   const { plan, loading } = useWeeklyPlan(householdId, selectedWeekId);
   const [generating, setGenerating] = useState(false);
+  const [completingDay, setCompletingDay] = useState("");
   const [message, setMessage] = useState("");
   const [openRecipe, setOpenRecipe] = useState(null);
 
@@ -1947,6 +2106,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
           [day]: {
             recipeId: days[day]?.recipeId || "",
             notes: days[day]?.notes || "",
+            consumedAt: days[day]?.consumedAt || null,
             ...patch,
           },
         },
@@ -1958,7 +2118,97 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
     );
   };
 
-  const removeDay = (day) => saveDay(day, { recipeId: "", notes: "" });
+  const removeDay = (day) => saveDay(day, { recipeId: "", notes: "", consumedAt: null });
+
+  const markMealDone = async (day, recipe) => {
+    if (!recipe || days[day]?.consumedAt) return;
+
+    setCompletingDay(day);
+    setMessage("");
+    try {
+      const batch = writeBatch(db);
+      const skipped = [];
+      const requiredByStockItem = new Map();
+
+      (recipe.ingredients || []).forEach((ingredient) => {
+        const ingredientName = ingredient.nameSnapshot || "Ingredient";
+        if (!ingredient.stockItemId) {
+          skipped.push(`${ingredientName}: not linked to stock`);
+          return;
+        }
+
+        // TODO: Support fractional quantities and unit conversion. For v1, stock is consumed
+        // as whole household units so cooking reduces maintenance without blocking the flow.
+        const quantity = Math.max(0, Math.ceil(Number(ingredient.quantity) || 0));
+        if (quantity <= 0) return;
+
+        const current = requiredByStockItem.get(ingredient.stockItemId) || {
+          quantity: 0,
+          names: [],
+        };
+        current.quantity += quantity;
+        current.names.push(ingredientName);
+        requiredByStockItem.set(ingredient.stockItemId, current);
+      });
+
+      requiredByStockItem.forEach((required, stockItemId) => {
+        const stockItem = stockItems.find((item) => item.id === stockItemId);
+        if (!stockItem) {
+          skipped.push(`${required.names.join(", ")}: stock item not found`);
+          return;
+        }
+
+        let remaining = required.quantity;
+        const nextUnits = withExpiryApplied(toUnits(stockItem)).map((unit) => {
+          if (remaining <= 0 || !canConsumeUnit(unit)) return unit;
+          remaining -= 1;
+          return { ...unit, state: "empty", emptiedAt: now() };
+        });
+        const consumed = required.quantity - remaining;
+
+        if (consumed > 0) {
+          batch.update(doc(db, "households", householdId, "stockItems", stockItem.id), {
+            items: nextUnits,
+            quantity: countInStock(nextUnits),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        if (remaining > 0) {
+          skipped.push(`${stockItem.name}: consumed ${consumed}/${required.quantity}`);
+        }
+      });
+
+      batch.set(
+        planRef,
+        {
+          days: {
+            ...days,
+            [day]: {
+              recipeId: days[day]?.recipeId || recipe.id,
+              notes: days[day]?.notes || "",
+              consumedAt: serverTimestamp(),
+            },
+          },
+          weekId: selectedWeekId,
+          weekStartDate: selectedWeekStartDate,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await batch.commit();
+      setMessage(
+        skipped.length > 0
+          ? `Done cooking. Skipped or partial: ${skipped.join("; ")}.`
+          : "Done cooking. Linked ingredients were consumed from stock."
+      );
+    } catch (err) {
+      setMessage(err.message || "Could not mark meal as done.");
+    } finally {
+      setCompletingDay("");
+    }
+  };
 
   const generateMissingIngredients = async () => {
     const plannedEntries = WEEK_DAYS.map((day) => ({
@@ -2092,23 +2342,48 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
 
       <div className="space-y-2">
         {WEEK_DAYS.map((day) => {
-          const recipe = recipes.find((item) => item.id === days[day]?.recipeId);
+          const dayPlan = days[day] || {};
+          const recipe = recipes.find((item) => item.id === dayPlan.recipeId);
+          const consumed = Boolean(dayPlan.consumedAt);
           return (
-            <div key={day} className="rounded-lg border border-slate-100 p-2">
+            <div
+              key={day}
+              className={`rounded-lg border p-2 ${
+                consumed ? "border-emerald-200 bg-emerald-50/70" : "border-slate-100"
+              }`}
+            >
               <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="text-sm font-medium capitalize">{day}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium capitalize">{day}</div>
+                  {consumed && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      Completed
+                    </span>
+                  )}
+                </div>
                 {recipe && (
-                  <button
-                    onClick={() => setOpenRecipe(recipe)}
-                    className="rounded border px-2 py-1 text-xs hover:bg-slate-50"
-                  >
-                    Open
-                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => setOpenRecipe(recipe)}
+                      className="rounded border px-2 py-1 text-xs hover:bg-white"
+                    >
+                      {(recipe.steps || []).length > 0 ? "Start Cooking" : "Open Recipe"}
+                    </button>
+                    <button
+                      onClick={() => markMealDone(day, recipe)}
+                      disabled={consumed || completingDay === day}
+                      className="rounded bg-black px-2 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                    >
+                      {consumed ? "Done" : completingDay === day ? "Saving..." : "Done Cooking"}
+                    </button>
+                  </div>
                 )}
               </div>
               <select
-                value={days[day]?.recipeId || ""}
-                onChange={(event) => saveDay(day, { recipeId: event.target.value })}
+                value={dayPlan.recipeId || ""}
+                onChange={(event) =>
+                  saveDay(day, { recipeId: event.target.value, consumedAt: null })
+                }
                 className="mb-2 w-full rounded border px-2 py-1 text-sm"
               >
                 <option value="">No recipe</option>
@@ -2119,12 +2394,12 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
                 ))}
               </select>
               <input
-                value={days[day]?.notes || ""}
+                value={dayPlan.notes || ""}
                 onChange={(event) => saveDay(day, { notes: event.target.value })}
                 className="w-full rounded border px-2 py-1 text-sm"
                 placeholder="Notes"
               />
-              {(days[day]?.recipeId || days[day]?.notes) && (
+              {(dayPlan.recipeId || dayPlan.notes) && (
                 <button
                   onClick={() => removeDay(day)}
                   className="mt-2 rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
@@ -2147,7 +2422,7 @@ function Inventory({ householdId, householdName }) {
   const { items, loading } = useStockItems(householdId);
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
-  const [mainView, setMainView] = useState("overview");
+  const [mainView, setMainView] = useState("weekly");
   const [inventoryMode, setInventoryMode] = useState("multi");
   const [groupBy, setGroupBy] = useState("Category");
   const [soonDays, setSoonDays] = useState(2);
@@ -2156,6 +2431,10 @@ function Inventory({ householdId, householdName }) {
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [templateMessage, setTemplateMessage] = useState("");
   const [hideCheckedShoppingItems, setHideCheckedShoppingItems] = useState(true);
+
+  useEffect(() => {
+    setMainView("weekly");
+  }, [householdId]);
 
   const availableDefaultItems = useMemo(() => {
     const existingNames = new Set(items.map((item) => normalize(item.name)));
@@ -2388,6 +2667,7 @@ function Inventory({ householdId, householdName }) {
           </p>
           <h2 className="text-xl font-semibold text-slate-950">{householdName}</h2>
         </div>
+        {mainView !== "weekly" && (
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setModalOpen(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
             + Add Product
@@ -2420,6 +2700,7 @@ function Inventory({ householdId, householdName }) {
             <option value="None">Group: None</option>
           </select>
         </div>
+        )}
       </div>
       {templateMessage && <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>}
     </div>
@@ -2427,7 +2708,7 @@ function Inventory({ householdId, householdName }) {
 
   const renderOverview = () => (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <button
           type="button"
           onClick={() => setMainView("inventory")}
@@ -2436,30 +2717,6 @@ function Inventory({ householdId, householdName }) {
           <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Stock</div>
           <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.unitCount}</div>
           <div className="text-xs text-slate-500">{stockSummary.productCount} products</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setInventoryMode("expiring");
-            setMainView("inventory");
-          }}
-          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
-        >
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Soon</div>
-          <div className="mt-1 text-2xl font-semibold text-sky-700">{stockSummary.soonCount}</div>
-          <div className="text-xs text-slate-500">within {soonDays} days</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setInventoryMode("expiring");
-            setMainView("inventory");
-          }}
-          className="rounded-xl bg-white p-3 text-left shadow hover:bg-slate-50"
-        >
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Expired</div>
-          <div className="mt-1 text-2xl font-semibold text-rose-700">{stockSummary.expiredCount}</div>
-          <div className="text-xs text-slate-500">needs action</div>
         </button>
         <button
           type="button"
@@ -2568,7 +2825,7 @@ function Inventory({ householdId, householdName }) {
 }
 
 export default function App() {
-  const { user, loading: authLoading } = useAuthUser();
+  const { user, loading: authLoading, redirectError } = useAuthUser();
   const {
     memberships,
     loading: householdsLoading,
@@ -2648,7 +2905,7 @@ export default function App() {
       </main>
     );
   }
-  if (!user) return <SignInScreen />;
+  if (!user) return <SignInScreen authError={redirectError} />;
 
   const selectedHousehold = availableHouseholds.find((household) => household.id === selectedHouseholdId);
 
