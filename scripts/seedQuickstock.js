@@ -2,24 +2,30 @@
  * QuickStock seed import script.
  *
  * Usage:
- * 1. Put this file in scripts/seedQuickstock.js
- * 2. Put the seed JSON files in data/
- * 3. Install deps if needed: npm install firebase
- * 4. Make sure .env contains VITE_FIREBASE_* values
- * 5. Run:
- *    node scripts/seedQuickstock.js YOUR_HOUSEHOLD_ID
+ *   node scripts/seedQuickstock.js YOUR_HOUSEHOLD_ID
+ *   node scripts/seedQuickstock.js YOUR_HOUSEHOLD_ID --replace-seeded
  *
  * Notes:
- * - This script is idempotent by document id: it uses setDoc(..., { merge: true }).
- * - It does not delete existing data.
- * - It imports stockItems first, then recipes.
+ * - Default mode uses setDoc(..., { merge: true }) and does not delete existing data.
+ * - --replace-seeded deletes only documents where seeded === true in stockItems and recipes.
+ * - It never deletes non-seeded/manual user data.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  writeBatch,
+  where,
+} from "firebase/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,12 +60,41 @@ function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(fullPath, "utf8"));
 }
 
+async function deleteSeededDocs(db, householdId, collectionName) {
+  const ref = collection(db, "households", householdId, collectionName);
+  const seededQuery = query(ref, where("seeded", "==", true));
+  const snapshot = await getDocs(seededQuery);
+
+  if (snapshot.empty) {
+    console.log(`No seeded ${collectionName} docs to delete.`);
+    return;
+  }
+
+  console.log(`Deleting ${snapshot.size} seeded ${collectionName} docs...`);
+  let batch = writeBatch(db);
+  let count = 0;
+
+  for (const existingDoc of snapshot.docs) {
+    batch.delete(existingDoc.ref);
+    count += 1;
+
+    if (count % 450 === 0) {
+      await batch.commit();
+      batch = writeBatch(db);
+    }
+  }
+
+  await batch.commit();
+}
+
 async function main() {
   loadEnv();
 
   const householdId = process.argv[2];
+  const replaceSeeded = process.argv.includes("--replace-seeded");
+
   if (!householdId) {
-    throw new Error("Usage: node scripts/seedQuickstock.js YOUR_HOUSEHOLD_ID");
+    throw new Error("Usage: node scripts/seedQuickstock.js YOUR_HOUSEHOLD_ID [--replace-seeded]");
   }
 
   const app = initializeApp({
@@ -72,6 +107,12 @@ async function main() {
   });
 
   const db = getFirestore(app);
+
+  if (replaceSeeded) {
+    await deleteSeededDocs(db, householdId, "stockItems");
+    await deleteSeededDocs(db, householdId, "recipes");
+  }
+
   const stockItems = readJson("data/stockItems.seed.json");
   const recipes = readJson("data/recipes.seed.json");
 

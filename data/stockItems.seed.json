@@ -3,61 +3,71 @@
     "name": "Kyllingfilet",
     "emoji": "🍗",
     "unit": "g",
-    "packSize": 600,
+    "packSize": 1,
     "shelfLifeDays": 3,
     "category": "protein",
     "id": "kyllingfilet",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 600,
+    "packageUnit": "g"
   },
   {
     "name": "Kjøttdeig",
     "emoji": "🥩",
     "unit": "g",
-    "packSize": 400,
+    "packSize": 1,
     "shelfLifeDays": 3,
     "category": "protein",
     "id": "kjttdeig",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 400,
+    "packageUnit": "g"
   },
   {
     "name": "Høyrygg",
     "emoji": "🥩",
     "unit": "g",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 4,
     "category": "protein",
     "id": "hyrygg",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "g"
   },
   {
     "name": "Bacon",
     "emoji": "🥓",
     "unit": "g",
-    "packSize": 150,
+    "packSize": 1,
     "shelfLifeDays": 7,
     "category": "protein",
     "id": "bacon",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 150,
+    "packageUnit": "g"
   },
   {
     "name": "Pepperoni",
     "emoji": "🍕",
     "unit": "g",
-    "packSize": 100,
+    "packSize": 1,
     "shelfLifeDays": 14,
     "category": "protein",
     "id": "pepperoni",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 100,
+    "packageUnit": "g"
   },
   {
     "name": "Egg",
@@ -75,61 +85,71 @@
     "name": "Melk",
     "emoji": "🥛",
     "unit": "ml",
-    "packSize": 1000,
+    "packSize": 1,
     "shelfLifeDays": 7,
     "category": "dairy",
     "id": "melk",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 1000,
+    "packageUnit": "ml"
   },
   {
     "name": "Fløte",
     "emoji": "🥛",
     "unit": "ml",
-    "packSize": 300,
+    "packSize": 1,
     "shelfLifeDays": 7,
     "category": "dairy",
     "id": "flte",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 300,
+    "packageUnit": "ml"
   },
   {
     "name": "Smør",
     "emoji": "🧈",
     "unit": "g",
-    "packSize": 250,
+    "packSize": 1,
     "shelfLifeDays": 30,
     "category": "dairy",
     "id": "smr",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 250,
+    "packageUnit": "g"
   },
   {
     "name": "Ost",
     "emoji": "🧀",
     "unit": "g",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 21,
     "category": "dairy",
     "id": "ost",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "g"
   },
   {
     "name": "Parmesan",
     "emoji": "🧀",
     "unit": "g",
-    "packSize": 150,
+    "packSize": 1,
     "shelfLifeDays": 30,
     "category": "dairy",
     "id": "parmesan",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 150,
+    "packageUnit": "g"
   },
   {
     "name": "Rømme",
@@ -147,49 +167,57 @@
     "name": "Pasta",
     "emoji": "🍝",
     "unit": "g",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "carbs",
     "id": "pasta",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "g"
   },
   {
     "name": "Spaghetti",
     "emoji": "🍝",
     "unit": "g",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "carbs",
     "id": "spaghetti",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "g"
   },
   {
     "name": "Ris",
     "emoji": "🍚",
     "unit": "g",
-    "packSize": 1000,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "carbs",
     "id": "ris",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 1000,
+    "packageUnit": "g"
   },
   {
     "name": "Nudler",
     "emoji": "🍜",
     "unit": "g",
-    "packSize": 250,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "carbs",
     "id": "nudler",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 250,
+    "packageUnit": "g"
   },
   {
     "name": "Tortillalefser",
@@ -219,13 +247,15 @@
     "name": "Poteter",
     "emoji": "🥔",
     "unit": "g",
-    "packSize": 1000,
+    "packSize": 1,
     "shelfLifeDays": 30,
     "category": "vegetables",
     "id": "poteter",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 1000,
+    "packageUnit": "g"
   },
   {
     "name": "Løk",
@@ -255,13 +285,15 @@
     "name": "Gulrot",
     "emoji": "🥕",
     "unit": "g",
-    "packSize": 750,
+    "packSize": 1,
     "shelfLifeDays": 21,
     "category": "vegetables",
     "id": "gulrot",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 750,
+    "packageUnit": "g"
   },
   {
     "name": "Paprika",
@@ -351,13 +383,15 @@
     "name": "Passata",
     "emoji": "🍅",
     "unit": "ml",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "sauce",
     "id": "passata",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "ml"
   },
   {
     "name": "Hermetiske tomater",
@@ -375,37 +409,43 @@
     "name": "Tomatpuré",
     "emoji": "🥫",
     "unit": "g",
-    "packSize": 140,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "sauce",
     "id": "tomatpure",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 140,
+    "packageUnit": "g"
   },
   {
     "name": "Soyasaus",
     "emoji": "🥢",
     "unit": "ml",
-    "packSize": 150,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "sauce",
     "id": "soyasaus",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 150,
+    "packageUnit": "ml"
   },
   {
     "name": "Sweet chili saus",
     "emoji": "🌶️",
     "unit": "ml",
-    "packSize": 250,
+    "packSize": 1,
     "shelfLifeDays": 180,
     "category": "sauce",
     "id": "sweet-chili-saus",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 250,
+    "packageUnit": "ml"
   },
   {
     "name": "Tacokrydder",
@@ -423,61 +463,71 @@
     "name": "Garam masala",
     "emoji": "🍛",
     "unit": "g",
-    "packSize": 50,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "spice",
     "id": "garam-masala",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 50,
+    "packageUnit": "g"
   },
   {
     "name": "Karri",
     "emoji": "🍛",
     "unit": "g",
-    "packSize": 50,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "spice",
     "id": "karri",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 50,
+    "packageUnit": "g"
   },
   {
     "name": "Paprikakrydder",
     "emoji": "🌶️",
     "unit": "g",
-    "packSize": 50,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "spice",
     "id": "paprikakrydder",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 50,
+    "packageUnit": "g"
   },
   {
     "name": "Salt",
     "emoji": "🧂",
     "unit": "g",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 3650,
     "category": "spice",
     "id": "salt",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "g"
   },
   {
     "name": "Pepper",
     "emoji": "🧂",
     "unit": "g",
-    "packSize": 100,
+    "packSize": 1,
     "shelfLifeDays": 3650,
     "category": "spice",
     "id": "pepper",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 100,
+    "packageUnit": "g"
   },
   {
     "name": "Kokosmelk",
@@ -519,60 +569,70 @@
     "name": "Hvetemel",
     "emoji": "🌾",
     "unit": "g",
-    "packSize": 1000,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "baking",
     "id": "hvetemel",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 1000,
+    "packageUnit": "g"
   },
   {
     "name": "Olivenolje",
     "emoji": "🫒",
     "unit": "ml",
-    "packSize": 500,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "sauce",
     "id": "olivenolje",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 500,
+    "packageUnit": "ml"
   },
   {
     "name": "Vin",
     "emoji": "🍷",
     "unit": "ml",
-    "packSize": 750,
+    "packSize": 1,
     "shelfLifeDays": 365,
     "category": "sauce",
     "id": "vin",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 750,
+    "packageUnit": "ml"
   },
   {
     "name": "Sopp",
     "emoji": "🍄",
     "unit": "g",
-    "packSize": 250,
+    "packSize": 1,
     "shelfLifeDays": 7,
     "category": "vegetables",
     "id": "sopp",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 250,
+    "packageUnit": "g"
   },
   {
     "name": "Ingefær",
     "emoji": "🫚",
     "unit": "g",
-    "packSize": 100,
+    "packSize": 1,
     "shelfLifeDays": 21,
     "category": "vegetables",
     "id": "ingefr",
     "quantity": 0,
     "autoAddWhenEmpty": false,
-    "freezer": false
+    "freezer": false,
+    "packageAmount": 100,
+    "packageUnit": "g"
   }
 ]

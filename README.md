@@ -50,6 +50,12 @@ Build production bundle:
 npm run build
 ```
 
+### Starter pantry vs demo seed data
+
+The in-app `Add default pantry items` action only adds a small starter set of stock items to the current household. It does not import recipes and does not call `scripts/seedQuickstock.js`.
+
+`scripts/seedQuickstock.js` is a developer/demo import tool. It can import both stock items and recipes from `data/` when run manually from the command line.
+
 ---
 
 ## Documentation

@@ -13,9 +13,11 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -36,16 +38,57 @@ const WEEK_DAYS = [
   "sunday",
 ];
 const MAIN_VIEWS = [
-  { id: "weekly", label: "Weekly Menu" },
-  { id: "shopping", label: "Shopping List" },
-  { id: "inventory", label: "Inventory" },
-  { id: "recipes", label: "Recipes" },
-  { id: "overview", label: "Overview" },
+  { id: "weekly", label: "Weekly Menu", icon: "🍽" },
+  { id: "shopping", label: "Shopping List", icon: "🛒" },
+  { id: "inventory", label: "Inventory", icon: "🧊" },
+  { id: "recipes", label: "Recipes", icon: "📖" },
+  { id: "overview", label: "Management", icon: "⚙️" },
 ];
 const INVENTORY_MODES = [
-  { id: "multi", label: "Multi View" },
   { id: "fridge", label: "Fridge View" },
+  { id: "multi", label: "Multi View" },
 ];
+const STAT_CARD_STYLES = {
+  Menu: {
+    icon: "🍽",
+    className: "border-emerald-100 bg-emerald-50/80 text-emerald-900",
+    iconClassName: "bg-emerald-600 text-white",
+  },
+  Inventory: {
+    icon: "🧊",
+    className: "border-emerald-100 bg-emerald-50/80 text-emerald-900",
+    iconClassName: "bg-emerald-600 text-white",
+  },
+  Stock: {
+    icon: "🧊",
+    className: "border-emerald-100 bg-emerald-50/80 text-emerald-900",
+    iconClassName: "bg-emerald-600 text-white",
+  },
+  Shopping: {
+    icon: "🛒",
+    className: "border-sky-100 bg-sky-50/80 text-sky-900",
+    iconClassName: "bg-sky-600 text-white",
+  },
+  Recipes: {
+    icon: "📖",
+    className: "border-amber-100 bg-amber-50/80 text-amber-900",
+    iconClassName: "bg-amber-500 text-white",
+  },
+  Attention: {
+    icon: "!",
+    className: "border-rose-100 bg-rose-50/80 text-rose-900",
+    iconClassName: "bg-rose-500 text-white",
+  },
+};
+const DAY_STYLES = {
+  monday: { icon: "1", className: "border-amber-100 bg-amber-50/70", chip: "bg-amber-100 text-amber-900" },
+  tuesday: { icon: "2", className: "border-emerald-100 bg-emerald-50/70", chip: "bg-emerald-100 text-emerald-900" },
+  wednesday: { icon: "3", className: "border-stone-200 bg-stone-50", chip: "bg-stone-200 text-stone-900" },
+  thursday: { icon: "4", className: "border-emerald-100 bg-emerald-50/70", chip: "bg-emerald-100 text-emerald-900" },
+  friday: { icon: "5", className: "border-amber-100 bg-amber-50/70", chip: "bg-amber-100 text-amber-900" },
+  saturday: { icon: "6", className: "border-rose-100 bg-rose-50/60", chip: "bg-rose-100 text-rose-900" },
+  sunday: { icon: "7", className: "border-stone-200 bg-stone-50", chip: "bg-stone-200 text-stone-900" },
+};
 
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
@@ -191,8 +234,35 @@ const genId = () =>
 const normalize = (value = "") =>
   value
     .toLowerCase()
+    .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
+
+const PANTRY_ALIAS_KEYWORDS = [
+  { key: "onion", aliases: ["onion", "onions", "lok", "løk"] },
+  { key: "garlic", aliases: ["garlic", "hvitlok", "hvitløk"] },
+  { key: "carrot", aliases: ["carrot", "carrots", "gulrot", "gulrøtter", "gulrotter"] },
+  { key: "milk", aliases: ["milk", "melk"] },
+  { key: "cheese", aliases: ["cheese", "ost"] },
+  { key: "butter", aliases: ["butter", "smor", "smør"] },
+  { key: "egg", aliases: ["egg", "eggs"] },
+  { key: "bread", aliases: ["bread", "brod", "brød"] },
+  { key: "pasta", aliases: ["pasta"] },
+  { key: "rice", aliases: ["rice", "ris"] },
+];
+
+const pantryItemKey = (name = "") => {
+  const normalized = normalize(name);
+  const compact = normalized.replace(/[^a-z0-9]+/g, " ").trim();
+  const words = new Set(compact.split(/\s+/).filter(Boolean));
+  const alias = PANTRY_ALIAS_KEYWORDS.find((item) =>
+    item.aliases.some((aliasName) => words.has(normalize(aliasName)))
+  );
+  return alias?.key || compact;
+};
+
+const defaultPantryDocId = (name = "") =>
+  `default-${pantryItemKey(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || genId()}`;
 
 const activeHouseholdStorageKey = (userId) => `${ACTIVE_HOUSEHOLD_STORAGE_PREFIX}.${userId}`;
 
@@ -307,6 +377,16 @@ const getStockSignals = (product, soonDays = 2) => {
   };
 };
 
+const deleteCollectionDocs = async (collectionRef) => {
+  const snapshot = await getDocs(collectionRef);
+  if (snapshot.empty) return 0;
+
+  const batch = writeBatch(db);
+  snapshot.docs.forEach((itemDoc) => batch.delete(itemDoc.ref));
+  await batch.commit();
+  return snapshot.size;
+};
+
 const groupStockProducts = (products, groupBy) => {
   const groups = new Map();
   for (const product of products) {
@@ -342,7 +422,7 @@ const groupStockProducts = (products, groupBy) => {
 
 function ViewSelector({ options, value, onChange }) {
   return (
-    <div className="flex gap-2 overflow-x-auto rounded-2xl border border-slate-200/70 bg-white/90 p-1.5 shadow-sm">
+    <div className="flex gap-2 overflow-x-auto rounded-2xl border border-stone-200/80 bg-white/90 p-1.5 shadow-sm">
       {options.map((option) => (
         <button
           key={option.id}
@@ -350,8 +430,8 @@ function ViewSelector({ options, value, onChange }) {
           onClick={() => onChange(option.id)}
           className={`min-h-11 shrink-0 rounded-xl px-4 py-2 text-sm font-semibold transition ${
             value === option.id
-              ? "bg-teal-700 text-white shadow-sm"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+              ? "bg-emerald-700 text-white shadow-sm"
+              : "text-slate-600 hover:bg-stone-100 hover:text-slate-950"
           }`}
         >
           {option.label}
@@ -361,21 +441,35 @@ function ViewSelector({ options, value, onChange }) {
   );
 }
 
-function StatsStrip({ stats }) {
+function StatsStrip({ stats, onStatClick }) {
   return (
-    <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-      {stats.map((stat) => (
-        <div
-          key={stat.label}
-          className="rounded-2xl border border-slate-200/70 bg-white/90 p-3 shadow-sm"
-        >
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            {stat.label}
-          </div>
-          <div className="mt-1 text-2xl font-bold text-slate-950">{stat.value}</div>
-          <div className="text-xs text-slate-500">{stat.detail}</div>
-        </div>
-      ))}
+    <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {stats.map((stat) => {
+        const style = STAT_CARD_STYLES[stat.label] || STAT_CARD_STYLES.Inventory;
+        const clickable = Boolean(stat.targetView && onStatClick);
+        const Card = clickable ? "button" : "div";
+        return (
+          <Card
+            key={stat.label}
+            type={clickable ? "button" : undefined}
+            onClick={clickable ? () => onStatClick(stat.targetView) : undefined}
+            className={`rounded-2xl border p-3.5 text-left shadow-sm transition hover:shadow-md ${style.className} ${
+              clickable ? "cursor-pointer hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2" : ""
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide opacity-70">
+                {stat.label}
+              </div>
+              <div className={`grid h-8 w-8 place-items-center rounded-full text-sm ${style.iconClassName}`}>
+                {style.icon}
+              </div>
+            </div>
+            <div className="mt-2 text-3xl font-bold leading-none">{stat.value}</div>
+            <div className="mt-1 text-xs opacity-70">{stat.detail}</div>
+          </Card>
+        );
+      })}
     </section>
   );
 }
@@ -582,7 +676,7 @@ function useWeeklyPlan(householdId, weekId) {
 
 function MissingFirebaseConfig() {
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-8">
+    <main className="min-h-screen bg-stone-100 px-4 py-8">
       <section className="mx-auto max-w-xl rounded-xl bg-white p-5 shadow">
         <h1 className="text-xl font-bold text-slate-950">Firebase config needed</h1>
         <p className="mt-2 text-sm text-slate-600">
@@ -649,14 +743,19 @@ function HouseholdBar({
 }) {
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [renameName, setRenameName] = useState("");
   const [busy, setBusy] = useState(false);
   const [joinBusy, setJoinBusy] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
   const [error, setError] = useState("");
   const [joinError, setJoinError] = useState("");
   const [inviteError, setInviteError] = useState("");
+  const [renameError, setRenameError] = useState("");
+  const [renameMessage, setRenameMessage] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [householdDetails, setHouseholdDetails] = useState(null);
   const [memberDetails, setMemberDetails] = useState(null);
   const [inviteCodeOverride, setInviteCodeOverride] = useState("");
@@ -664,17 +763,27 @@ function HouseholdBar({
   const selectedHousehold = memberships.find((household) => household.id === selectedId);
   const currentRole = memberDetails?.role || selectedHousehold?.role || "";
   const isAdmin = currentRole === "admin";
+  const displayHouseholdName =
+    householdDetails?.name || selectedHousehold?.name || "Household inventory";
   const selectedInviteCode =
     inviteCodeOverride || selectedHousehold?.inviteCode || householdDetails?.inviteCode || "";
 
   useEffect(() => {
     setCopyMessage("");
     setInviteError("");
-    setInviteOpen(false);
+    setManageOpen(false);
+    setSettingsOpen(false);
     setInviteCodeOverride("");
+    setRenameError("");
+    setRenameMessage("");
     setHouseholdDetails(null);
     setMemberDetails(null);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!manageOpen) return;
+    setRenameName(householdDetails?.name || selectedHousehold?.name || "");
+  }, [householdDetails?.name, manageOpen, selectedHousehold?.name]);
 
   useEffect(() => {
     if (!selectedId || !db) {
@@ -753,6 +862,7 @@ function HouseholdBar({
       onCreated({ id: householdRef.id, ...householdSummary });
       onSelect(householdRef.id);
       setName("");
+      setManageOpen(false);
     } catch (err) {
       setError(err.message || "Could not create household.");
     } finally {
@@ -802,13 +912,19 @@ function HouseholdBar({
     return code;
   };
 
-  const showInvite = async () => {
-    if (!isAdmin) return;
+  const openManageHousehold = async () => {
+    setManageOpen(true);
+    setError("");
+    setJoinError("");
+    setRenameError("");
+    setRenameMessage("");
+    setCopyMessage("");
+    setRenameName(householdDetails?.name || selectedHousehold?.name || "");
 
-    setInviteOpen(true);
+    if (!selectedHousehold || !isAdmin || selectedInviteCode) return;
+
     setInviteBusy(true);
     setInviteError("");
-    setCopyMessage("");
     try {
       await ensureInviteCode();
     } catch (err) {
@@ -819,18 +935,66 @@ function HouseholdBar({
   };
 
   const copyInviteCode = async () => {
-    if (!selectedHousehold || !isAdmin) return;
+    if (!selectedHousehold) return;
 
     setCopyMessage("");
     setInviteError("");
     try {
-      const code = await ensureInviteCode();
+      const code = isAdmin ? await ensureInviteCode() : selectedInviteCode;
       if (!code) return;
       await navigator.clipboard.writeText(code);
       setCopyMessage("Copied");
     } catch (err) {
       setInviteError(err.message || "Could not copy invite code.");
       setCopyMessage("Copy failed");
+    }
+  };
+
+  const renameHousehold = async (event) => {
+    event.preventDefault();
+    const trimmed = renameName.trim();
+    if (!selectedHousehold || !isAdmin || !trimmed) return;
+
+    setRenameBusy(true);
+    setRenameError("");
+    setRenameMessage("");
+    try {
+      const code = selectedInviteCode;
+      const batch = writeBatch(db);
+      batch.update(doc(db, "households", selectedHousehold.id), {
+        name: trimmed,
+        updatedAt: serverTimestamp(),
+      });
+      batch.set(
+        doc(db, "users", user.uid, "households", selectedHousehold.id),
+        {
+          householdId: selectedHousehold.id,
+          name: trimmed,
+          role: currentRole || "admin",
+          inviteCode: code || "",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+      if (code) {
+        batch.set(
+          doc(db, "householdInvites", code),
+          {
+            householdId: selectedHousehold.id,
+            name: trimmed,
+            inviteCode: code,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
+
+      await batch.commit();
+      setRenameMessage("Household renamed.");
+    } catch (err) {
+      setRenameError(err.message || "Could not rename household.");
+    } finally {
+      setRenameBusy(false);
     }
   };
 
@@ -894,6 +1058,7 @@ function HouseholdBar({
       onCreated({ id: householdId, ...householdSummary });
       onSelect(householdId);
       setInviteCode("");
+      setManageOpen(false);
     } catch (err) {
       setJoinError(err.message || "Could not join household.");
     } finally {
@@ -901,23 +1066,27 @@ function HouseholdBar({
     }
   };
 
+  const selectHousehold = (householdId) => {
+    onSelect(householdId);
+  };
+
   return (
     <>
-      <header className="mb-7 flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">QuickStock</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-950">
-            {selectedHousehold?.name || "Household inventory"}
+      <header className="mb-7 flex items-center justify-between gap-3 rounded-2xl border border-stone-200/80 bg-white/90 p-4 shadow-sm">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">QuickStock</p>
+          <h1 className="mt-1 truncate text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+            {displayHouseholdName}
           </h1>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-            Household
+        <div className="hidden items-center gap-2 lg:flex">
+          <label className="flex h-11 items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            <span>Household</span>
             <select
               value={selectedId}
-              onChange={(event) => onSelect(event.target.value)}
+              onChange={(event) => selectHousehold(event.target.value)}
               disabled={loading || memberships.length === 0}
-              className="min-h-11 min-w-52 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
+              className="h-11 min-w-52 rounded-xl border border-slate-300 bg-white px-3 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
             >
               {loading && memberships.length === 0 ? (
                 <option value="">Loading households...</option>
@@ -931,84 +1100,218 @@ function HouseholdBar({
               ))}
             </select>
           </label>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={showInvite}
-              disabled={!selectedHousehold || inviteBusy}
-              className="min-h-11 rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800 disabled:opacity-50"
-            >
-              {inviteBusy ? "Loading..." : "Invite"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={openManageHousehold}
+            className="h-11 rounded-xl bg-emerald-700 px-3 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
+          >
+            Manage Household
+          </button>
           <button
             type="button"
             onClick={() => signOut(auth)}
-            className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50"
           >
             Sign out
           </button>
         </div>
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Household settings"
+            className="grid h-11 w-11 place-items-center rounded-xl border border-slate-300 bg-white text-lg hover:bg-slate-50"
+          >
+            ⚙️
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut(auth)}
+            aria-label="Sign out"
+            className="grid h-11 w-11 place-items-center rounded-xl border border-slate-300 bg-white text-lg hover:bg-slate-50"
+          >
+            ⏻
+          </button>
+        </div>
       </header>
 
-      <section className="mb-6 rounded-2xl border border-slate-200/70 bg-white/90 p-4 shadow-sm">
-        {isAdmin && inviteOpen && (
-          <div className="mb-3 flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invite code</p>
-              <p className="font-mono text-sm font-semibold text-slate-950">
-                {selectedInviteCode || "Loading..."}
+      {settingsOpen && (
+        <div className="fixed inset-0 z-40 flex items-start justify-end bg-slate-950/30 p-3 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close household settings"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setSettingsOpen(false)}
+          />
+          <section className="relative mt-16 w-full max-w-sm rounded-2xl bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Household
               </p>
-              {inviteError && <p className="mt-1 text-sm text-rose-700">{inviteError}</p>}
-            </div>
-            <div className="flex items-center gap-2">
-              {copyMessage && <span className="text-xs text-slate-500">{copyMessage}</span>}
               <button
                 type="button"
-                onClick={copyInviteCode}
-                disabled={inviteBusy || !selectedInviteCode}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50"
+                onClick={() => setSettingsOpen(false)}
+                className="min-h-9 rounded-xl border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
               >
-                Copy invite code
+                Close
               </button>
             </div>
-          </div>
-        )}
-        <div className="grid gap-3 lg:grid-cols-2">
-          <form onSubmit={createHousehold} className="flex gap-2">
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={loading ? "Loading households..." : "New household name"}
-              className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
+            <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Household
+              <select
+                value={selectedId}
+                onChange={(event) => selectHousehold(event.target.value)}
+                disabled={loading || memberships.length === 0}
+                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm normal-case tracking-normal text-slate-900 disabled:opacity-60"
+              >
+                {loading && memberships.length === 0 ? (
+                  <option value="">Loading households...</option>
+                ) : memberships.length === 0 ? (
+                  <option value="">No households yet</option>
+                ) : null}
+                {memberships.map((household) => (
+                  <option key={household.id} value={household.id}>
+                    {household.name || "Household"}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
-              type="submit"
-              disabled={busy || !name.trim()}
-              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+              type="button"
+              onClick={() => {
+                setSettingsOpen(false);
+                openManageHousehold();
+              }}
+              className="mt-3 min-h-11 w-full rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
             >
-              Create
+              Manage Household
             </button>
-          </form>
-          <form onSubmit={joinHousehold} className="flex gap-2">
-            <input
-              value={inviteCode}
-              onChange={(event) => setInviteCode(event.target.value)}
-              placeholder="Invite code"
-              className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm uppercase"
-            />
-            <button
-              type="submit"
-              disabled={joinBusy || !inviteCode.trim()}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Join
-            </button>
-          </form>
+          </section>
         </div>
-        {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
-        {joinError && <p className="mt-2 text-sm text-rose-700">{joinError}</p>}
-      </section>
+      )}
+
+      {manageOpen && (
+        <div className="fixed inset-0 z-50 flex items-end bg-slate-950/40 p-0 sm:items-center sm:p-4">
+          <section className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white p-4 shadow-xl sm:mx-auto sm:max-w-2xl sm:rounded-2xl sm:p-5">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Household
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-slate-950">Manage Household</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setManageOpen(false)}
+                className="min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {selectedHousehold && (
+              <div className="mb-4 rounded-2xl border border-slate-200 p-3">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Current household
+                    </p>
+                    <p className="text-lg font-semibold text-slate-950">{displayHouseholdName}</p>
+                    {currentRole && (
+                      <p className="text-xs capitalize text-slate-500">{currentRole}</p>
+                    )}
+                  </div>
+                </div>
+
+                {isAdmin && (
+                  <form onSubmit={renameHousehold} className="mb-4 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={renameName}
+                      onChange={(event) => setRenameName(event.target.value)}
+                      placeholder="Household name"
+                      className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={renameBusy || !renameName.trim()}
+                      className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      {renameBusy ? "Saving..." : "Rename"}
+                    </button>
+                  </form>
+                )}
+                {renameError && <p className="mb-3 text-sm text-rose-700">{renameError}</p>}
+                {renameMessage && <p className="mb-3 text-sm text-emerald-700">{renameMessage}</p>}
+
+                <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Invite code
+                    </p>
+                    <p className="font-mono text-sm font-semibold text-slate-950">
+                      {inviteBusy ? "Loading..." : selectedInviteCode || "No invite code yet"}
+                    </p>
+                    {inviteError && <p className="mt-1 text-sm text-rose-700">{inviteError}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {copyMessage && <span className="text-xs text-slate-500">{copyMessage}</span>}
+                    <button
+                      type="button"
+                      onClick={copyInviteCode}
+                      disabled={inviteBusy || (!isAdmin && !selectedInviteCode)}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Copy invite code
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              <form onSubmit={createHousehold} className="rounded-2xl border border-slate-200 p-3">
+                <p className="mb-2 text-sm font-semibold text-slate-950">Create household</p>
+                <div className="flex gap-2">
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder={loading ? "Loading households..." : "New household name"}
+                    className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy || !name.trim()}
+                    className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {busy ? "Creating..." : "Create"}
+                  </button>
+                </div>
+                {error && <p className="mt-2 text-sm text-rose-700">{error}</p>}
+              </form>
+
+              <form onSubmit={joinHousehold} className="rounded-2xl border border-slate-200 p-3">
+                <p className="mb-2 text-sm font-semibold text-slate-950">Join household</p>
+                <div className="flex gap-2">
+                  <input
+                    value={inviteCode}
+                    onChange={(event) => setInviteCode(event.target.value)}
+                    placeholder="Invite code"
+                    className="min-h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm uppercase"
+                  />
+                  <button
+                    type="submit"
+                    disabled={joinBusy || !inviteCode.trim()}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {joinBusy ? "Joining..." : "Join"}
+                  </button>
+                </div>
+                {joinError && <p className="mt-2 text-sm text-rose-700">{joinError}</p>}
+              </form>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -1206,26 +1509,45 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm transition hover:shadow-md">
+    <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm transition hover:shadow-md">
       <div className="mb-3 flex items-start justify-between gap-3">
         <button
           onClick={() => addUnits(1)}
-          className="grid h-20 w-20 shrink-0 touch-manipulation place-items-center rounded-2xl bg-slate-100 text-5xl transition hover:bg-slate-200"
+          className="grid h-24 w-24 shrink-0 touch-manipulation place-items-center rounded-2xl bg-emerald-50 text-6xl transition hover:bg-emerald-100"
           aria-label={`Add ${product.name}`}
         >
           {product.emoji || pickEmoji(product.name)}
         </button>
+        <div className="flex shrink-0 flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => addUnits(1)}
+            className="grid h-10 w-10 touch-manipulation place-items-center rounded-xl bg-emerald-700 text-lg font-bold text-white shadow-sm hover:bg-emerald-800"
+            aria-label={`Add one ${product.name}`}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
+            disabled={count === 0}
+            className="grid h-10 w-10 touch-manipulation place-items-center rounded-xl border border-stone-200 bg-white text-lg font-bold text-slate-700 shadow-sm hover:bg-stone-50 disabled:opacity-40"
+            aria-label={`Use one ${product.name}`}
+          >
+            -
+          </button>
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-lg font-semibold text-slate-950">{product.name}</h3>
             {product.freezer && <span className="text-xs">Frozen</span>}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-            <span className="rounded-full bg-slate-100 px-2 py-0.5">{count} in stock</span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5">pack {product.packSize || 1}</span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800">{count} in stock</span>
+            <span className="rounded-full bg-stone-100 px-2 py-0.5">pack {product.packSize || 1}</span>
             {product.isBase && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">Basisvare</span>}
             {(product.labels || []).map((label) => (
-              <span key={label} className="rounded-full bg-slate-100 px-2 py-0.5">
+              <span key={label} className="rounded-full bg-stone-100 px-2 py-0.5">
                 {label}
               </span>
             ))}
@@ -1277,7 +1599,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
         )}
         {soon > 0 && (
           <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-sky-700">
-            {soon} soon
+            {soon} expiring
           </span>
         )}
       </div>
@@ -1334,6 +1656,13 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
   const displayedUnits = activeUnits.slice(0, 24);
   const [manage, setManage] = useState(false);
   const emoji = product.emoji || pickEmoji(product.name);
+  const fridgeCardClass = product.freezer
+    ? "border-sky-100 bg-sky-50/80 ring-sky-100"
+    : expired > 0
+      ? "border-rose-100 bg-rose-50/70 ring-rose-100"
+      : soon > 0
+        ? "border-amber-100 bg-amber-50/80 ring-amber-100"
+        : "border-emerald-100 bg-emerald-50/80 ring-emerald-100";
 
   const patchUnits = async (nextUnits, extraPatch = {}) => {
     const hadStock = countInStock(units) > 0;
@@ -1368,15 +1697,15 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
   };
 
   return (
-    <div className="relative flex min-h-[380px] flex-col rounded-[2rem] bg-teal-50 p-6 text-center shadow-sm ring-1 ring-teal-100 transition hover:shadow-md">
-      <div className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-teal-700 text-sm font-bold text-white shadow-sm">
+    <div className={`relative flex min-h-[400px] flex-col rounded-[2rem] border p-6 text-center shadow-sm ring-1 transition hover:shadow-md ${fridgeCardClass}`}>
+      <div className="absolute right-4 top-4 grid h-12 w-12 place-items-center rounded-full bg-emerald-700 text-base font-bold text-white shadow-sm">
         {count}
       </div>
 
       <button
         type="button"
         onClick={() => addUnits(1)}
-        className="mx-auto mt-5 grid h-36 w-36 touch-manipulation place-items-center rounded-[1.75rem] bg-white/75 text-8xl shadow-sm transition hover:bg-white"
+        className="mx-auto mt-5 grid h-40 w-40 touch-manipulation place-items-center rounded-[1.75rem] bg-white/80 text-9xl shadow-sm transition hover:bg-white"
         aria-label={`Add ${product.name}`}
       >
         {emoji}
@@ -1387,12 +1716,16 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
           {product.name}
         </h3>
         <div className="mt-2 flex min-h-6 flex-wrap justify-center gap-1.5 text-xs">
-          {product.freezer && <span className="rounded-full bg-white/80 px-2 py-0.5 text-slate-700">Frozen</span>}
-          {product.isBase && <span className="rounded-full bg-white/80 px-2 py-0.5 text-slate-700">Basisvare</span>}
+          {product.freezer && <span className="rounded-full bg-white/85 px-2.5 py-1 text-slate-700">Frozen</span>}
+          {product.isBase && <span className="rounded-full bg-white/85 px-2.5 py-1 text-slate-700">Basisvare</span>}
           {expired > 0 && (
-            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">{expired} expired</span>
+            <span className="rounded-full bg-rose-100 px-2.5 py-1 font-medium text-rose-700">{expired} expired</span>
           )}
-          {soon > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800">{soon} soon</span>}
+          {soon > 0 && (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-800">
+              {soon} expiring
+            </span>
+          )}
         </div>
       </div>
 
@@ -1413,8 +1746,17 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
         </button>
         <button
           type="button"
+          onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
+          disabled={count === 0}
+          className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-white/85 px-4 py-2 text-lg font-bold text-slate-800 shadow-sm hover:bg-white disabled:opacity-40"
+          aria-label={`Use one ${product.name}`}
+        >
+          -
+        </button>
+        <button
+          type="button"
           onClick={() => addUnits(1)}
-          className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-teal-700 px-4 py-2 text-lg font-bold text-white shadow-sm hover:bg-teal-800"
+          className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-emerald-700 px-4 py-2 text-lg font-bold text-white shadow-sm hover:bg-emerald-800"
           aria-label={`Add one ${product.name}`}
         >
           +
@@ -1457,7 +1799,7 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
       </div>
 
       {manage && (
-        <div className="mt-5 flex flex-wrap justify-center gap-2 border-t border-teal-100 pt-4">
+        <div className="mt-5 flex flex-wrap justify-center gap-2 border-t border-white/70 pt-4">
           <button onClick={() => addUnits(product.packSize || 1)} className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white">
             + pack
           </button>
@@ -1498,6 +1840,7 @@ function ShoppingListPanel({
   stockItems,
   hideChecked,
   setHideChecked,
+  onOpenInventory,
 }) {
   const visibleItems = hideChecked
     ? shoppingItems.filter((item) => !item.checked)
@@ -1507,50 +1850,65 @@ function ShoppingListPanel({
     const shoppingRef = doc(db, "households", householdId, "shoppingList", shoppingItem.id);
 
     if (!checked) {
-      await updateDoc(shoppingRef, { checked: false, checkedAt: null, updatedAt: serverTimestamp() });
+      await updateDoc(shoppingRef, { checked: false, updatedAt: serverTimestamp() });
       return;
     }
 
-    const batch = writeBatch(db);
-    const stockItem = shoppingItem.sourceStockItemId
-      ? stockItems.find((item) => item.id === shoppingItem.sourceStockItemId)
-      : null;
+    await runTransaction(db, async (transaction) => {
+      const shoppingSnapshot = await transaction.get(shoppingRef);
+      if (!shoppingSnapshot.exists()) return;
 
-    if (stockItem) {
-      const packs = Math.max(1, Number(shoppingItem.packs) || 1);
-      const packSize = Math.max(1, Number(stockItem.packSize) || 1);
-      const restockAmount = Math.max(1, packs * packSize);
-      const nextUnits = toUnits(stockItem).concat(
-        Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
-      );
-      batch.update(doc(db, "households", householdId, "stockItems", stockItem.id), {
-        items: nextUnits,
-        quantity: countInStock(nextUnits),
+      const latestShoppingItem = { id: shoppingSnapshot.id, ...shoppingSnapshot.data() };
+      if (latestShoppingItem.checkedAt) {
+        transaction.update(shoppingRef, {
+          checked: true,
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      }
+
+      const stockItemId = latestShoppingItem.sourceStockItemId || shoppingItem.sourceStockItemId;
+      if (stockItemId) {
+        const stockRef = doc(db, "households", householdId, "stockItems", stockItemId);
+        const stockSnapshot = await transaction.get(stockRef);
+        if (stockSnapshot.exists()) {
+          const stockItem = { id: stockSnapshot.id, ...stockSnapshot.data() };
+          const packs = Math.max(1, Number(latestShoppingItem.packs) || 1);
+          const packSize = Math.max(1, Number(stockItem.packSize) || 1);
+          const restockAmount = Math.max(1, packs * packSize);
+          const nextUnits = toUnits(stockItem).concat(
+            Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
+          );
+          transaction.update(stockRef, {
+            items: nextUnits,
+            quantity: countInStock(nextUnits),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      transaction.update(shoppingRef, {
+        checked: true,
+        checkedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-    }
-
-    batch.update(shoppingRef, {
-      checked: true,
-      checkedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
     });
-    await batch.commit();
   };
 
-  const deleteShoppingItem = (shoppingItemId) =>
+  const deleteShoppingItem = (shoppingItemId) => {
+    if (!window.confirm("Remove this shopping item?")) return;
     deleteDoc(doc(db, "households", householdId, "shoppingList", shoppingItemId));
+  };
+
+  const clearShoppingList = async () => {
+    if (!window.confirm("Clear all shopping list items?")) return;
+    await deleteCollectionDocs(collection(db, "households", householdId, "shoppingList"));
+  };
 
   return (
-    <aside className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Shopping
-          </div>
-          <div className="text-lg font-bold text-slate-950">Shopping List</div>
-        </div>
-        <label className="flex items-center gap-2 text-xs text-slate-600">
+    <aside className="rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
+        <label className="flex min-h-10 items-center gap-2 rounded-full bg-slate-50 px-3 text-xs text-slate-600">
           <input
             type="checkbox"
             checked={hideChecked}
@@ -1558,38 +1916,78 @@ function ShoppingListPanel({
           />
           Hide checked
         </label>
+        <button
+          type="button"
+          onClick={clearShoppingList}
+          disabled={shoppingItems.length === 0}
+          className="min-h-10 rounded-full border border-rose-100 bg-white px-3 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-40"
+        >
+          Clear Shopping List
+        </button>
       </div>
 
       {shoppingLoading ? (
-        <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Loading list...</div>
+        <div className="rounded-xl bg-sky-50 p-3 text-sm text-slate-500">Loading list...</div>
       ) : visibleItems.length === 0 ? (
-        <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">List empty</div>
-      ) : (
-        <ul className="space-y-2">
-          {visibleItems.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/70 px-3 py-3 text-sm transition hover:bg-slate-50"
+        <div className="rounded-xl bg-sky-50 p-3 text-sm text-slate-500">
+          <p>{shoppingItems.length > 0 ? "All shopping items are checked." : "Shopping list is empty."}</p>
+          <p className="mt-1">Add items from Inventory or generate missing meal-plan ingredients.</p>
+          {onOpenInventory && (
+            <button
+              type="button"
+              onClick={onOpenInventory}
+              className="mt-3 min-h-10 rounded-xl border border-sky-200 bg-white px-3 py-2 text-sm font-medium text-sky-800 hover:bg-sky-50"
             >
-              <label className="flex min-w-0 items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={Boolean(item.checked)}
-                  onChange={(event) => checkItem(item, event.target.checked)}
-                />
-                <span className={item.checked ? "truncate line-through opacity-60" : "truncate"}>
-                  {item.name}
-                  {item.packs ? ` x${item.packs}` : ""}
-                </span>
-              </label>
-              <button
-                onClick={() => deleteShoppingItem(item.id)}
-                className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+              Open Inventory
+            </button>
+          )}
+        </div>
+      ) : (
+        <ul className="space-y-2.5">
+          {visibleItems.map((item) => {
+            const sourceStockItem = item.sourceStockItemId
+              ? stockItems.find((stockItem) => stockItem.id === item.sourceStockItemId)
+              : null;
+            const emoji = item.emoji || sourceStockItem?.emoji || pickEmoji(item.name);
+            const checked = Boolean(item.checked);
+            return (
+              <li
+                key={item.id}
+                className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-3.5 text-sm shadow-sm transition hover:shadow-md ${
+                  checked
+                    ? "border-emerald-100 bg-emerald-50/70 text-slate-500"
+                    : "border-sky-100 bg-white text-slate-900"
+                }`}
               >
-                Remove
-              </button>
-            </li>
-          ))}
+                <label className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => checkItem(item, event.target.checked)}
+                    className="h-5 w-5 accent-emerald-700"
+                  />
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-sky-50 text-2xl">
+                    {checked ? "✓" : emoji}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block truncate font-semibold ${checked ? "line-through opacity-70" : ""}`}>
+                      {item.name}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      {item.packs ? `${item.packs} pack${Number(item.packs) === 1 ? "" : "s"}` : "1 item"}
+                      {item.autoGenerated ? " · from meal plan" : ""}
+                    </span>
+                  </span>
+                </label>
+                <button
+                  onClick={() => deleteShoppingItem(item.id)}
+                  className="min-h-10 rounded-xl border border-rose-100 bg-white/80 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </aside>
@@ -1905,6 +2303,11 @@ function RecipeManager({ householdId, stockItems }) {
     setModalOpen(false);
   };
 
+  const deleteRecipe = (recipe) => {
+    if (!window.confirm(`Delete "${recipe.name}"?`)) return;
+    deleteDoc(doc(db, "households", householdId, "recipes", recipe.id));
+  };
+
   return (
     <section className="rounded-xl bg-white p-3 shadow">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -1920,7 +2323,16 @@ function RecipeManager({ householdId, stockItems }) {
       {loading ? (
         <div className="text-sm text-slate-500">Loading recipes...</div>
       ) : recipes.length === 0 ? (
-        <div className="text-sm text-slate-500">No recipes yet</div>
+        <div className="rounded-xl bg-amber-50 p-3 text-sm text-slate-600">
+          <p>No recipes yet.</p>
+          <button
+            type="button"
+            onClick={() => setModalOpen(true)}
+            className="mt-3 min-h-10 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-50"
+          >
+            Add first recipe
+          </button>
+        </div>
       ) : (
         <div className="space-y-2">
           {recipes.map((recipe) => (
@@ -1946,7 +2358,7 @@ function RecipeManager({ householdId, stockItems }) {
                     Edit
                   </button>
                   <button
-                    onClick={() => deleteDoc(doc(db, "households", householdId, "recipes", recipe.id))}
+                    onClick={() => deleteRecipe(recipe)}
                     className="rounded border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
                   >
                     Delete
@@ -2108,7 +2520,7 @@ function RecipeOpenModal({ recipe, onClose }) {
   );
 }
 
-function WeeklyMenu({ householdId, recipes, stockItems }) {
+function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => getStartOfIsoWeek(new Date()));
   const selectedWeekId = getIsoWeekId(selectedWeekStart);
   const selectedWeekStartDate = toDateInputValue(selectedWeekStart);
@@ -2144,8 +2556,10 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
     );
   };
 
-  const removeDay = (day) =>
+  const removeDay = (day) => {
+    if (!window.confirm(`Remove ${day}'s meal from this week?`)) return;
     saveDay(day, { recipeId: "", notes: "", consumedAt: null, consumptionUndo: [] });
+  };
 
   const markMealDone = async (day, recipe) => {
     if (!recipe || days[day]?.consumedAt) return;
@@ -2326,10 +2740,10 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
 
   const clearWeek = async () => {
     const hasCompletedMeals = WEEK_DAYS.some((day) => days[day]?.consumedAt);
-    if (
-      hasCompletedMeals &&
-      !window.confirm("This week has completed meals. Clear the plan without restoring stock?")
-    ) {
+    const message = hasCompletedMeals
+      ? "This week has completed meals. Clear the plan without restoring stock?"
+      : "Clear this week's meal plan?";
+    if (!window.confirm(message)) {
       return;
     }
 
@@ -2442,16 +2856,10 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
   };
 
   return (
-    <section className="rounded-2xl border border-teal-100 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-teal-700">
-            Main dashboard
-          </div>
-          <div className="mt-1 text-xl font-bold text-slate-950">Weekly Menu</div>
-          <div className="mt-1 text-xs text-slate-500">
-            {selectedWeekId} · starts {selectedWeekStartDate}
-          </div>
+        <div className="text-xs text-slate-500">
+          {selectedWeekId} · starts {selectedWeekStartDate}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <button
@@ -2464,9 +2872,9 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
           <button
             onClick={generateMissingIngredients}
             disabled={generating || loading}
-            className="min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+            className="min-h-10 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
           >
-            {generating ? "Generating..." : "Generate Missing Ingredients"}
+            {generating ? "Adding..." : "Add Missing Items"}
           </button>
         </div>
       </div>
@@ -2477,7 +2885,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             setMessage("");
             setSelectedWeekStart((current) => shiftWeek(current, -1));
           }}
-          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-slate-200 bg-stone-50 px-2 py-2 text-sm font-medium hover:bg-stone-100"
         >
           Previous
         </button>
@@ -2486,7 +2894,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             setMessage("");
             setSelectedWeekStart(getStartOfIsoWeek(new Date()));
           }}
-          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-2 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
         >
           This week
         </button>
@@ -2495,45 +2903,69 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
             setMessage("");
             setSelectedWeekStart((current) => shiftWeek(current, 1));
           }}
-          className="min-h-11 rounded-xl border border-slate-300 px-2 py-2 text-sm font-medium hover:bg-slate-50"
+          className="min-h-11 rounded-xl border border-slate-200 bg-stone-50 px-2 py-2 text-sm font-medium hover:bg-stone-100"
         >
           Next
         </button>
       </div>
+
+      {recipes.length === 0 && (
+        <div className="mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>No recipes yet. Add a recipe before planning meals.</p>
+          {onOpenRecipes && (
+            <button
+              type="button"
+              onClick={onOpenRecipes}
+              className="mt-3 min-h-10 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium hover:bg-amber-50"
+            >
+              Open Recipes
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3">
         {WEEK_DAYS.map((day) => {
           const dayPlan = days[day] || {};
           const recipe = recipes.find((item) => item.id === dayPlan.recipeId);
           const consumed = Boolean(dayPlan.consumedAt);
+          const dayStyle = DAY_STYLES[day] || DAY_STYLES.sunday;
           return (
             <div
               key={day}
-              className={`rounded-2xl border p-3 shadow-sm transition hover:shadow-md ${
-                consumed ? "border-emerald-200 bg-emerald-50" : "border-slate-200 bg-white"
+              className={`rounded-2xl border p-3.5 shadow-sm transition hover:shadow-md ${
+                consumed ? "border-emerald-300 bg-emerald-100/80 ring-1 ring-emerald-200" : dayStyle.className
               }`}
             >
               <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="text-base font-bold capitalize text-slate-950">{day}</div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-xl ${consumed ? "bg-emerald-600 text-white" : dayStyle.chip}`}>
+                    {consumed ? "✓" : dayStyle.icon}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-base font-bold capitalize text-slate-950">{day}</div>
+                    <div className="truncate text-xs text-slate-500">
+                      {recipe ? `${recipe.emoji || "🍽"} ${recipe.name}` : "No meal planned"}
+                    </div>
+                  </div>
                   {consumed && (
-                    <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white">
+                    <span className="hidden rounded-full bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white sm:inline-flex">
                       Completed
                     </span>
                   )}
                 </div>
                 {recipe && (
-                  <div className="flex shrink-0 gap-2">
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
                     <button
                       onClick={() => setOpenRecipe(recipe)}
-                      className="min-h-9 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50"
+                      className="min-h-10 rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium hover:bg-white"
                     >
                       {(recipe.steps || []).length > 0 ? "Start Cooking" : "Open Recipe"}
                     </button>
                     <button
                       onClick={() => markMealDone(day, recipe)}
                       disabled={consumed || completingDay === day}
-                      className="min-h-9 rounded-xl bg-teal-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-40"
+                      className="min-h-10 rounded-xl bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
                     >
                       {consumed ? "Done" : completingDay === day ? "Saving..." : "Done Cooking"}
                     </button>
@@ -2541,7 +2973,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
                       <button
                         onClick={() => undoMealDone(day)}
                         disabled={undoingDay === day}
-                        className="min-h-9 rounded-xl border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-40"
+                        className="min-h-10 rounded-xl border border-emerald-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-white disabled:opacity-40"
                       >
                         {undoingDay === day ? "Undoing..." : "Undo"}
                       </button>
@@ -2558,7 +2990,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
                     consumptionUndo: [],
                   })
                 }
-                className="mb-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="mb-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm"
               >
                 <option value="">No recipe</option>
                 {recipes.map((item) => (
@@ -2570,7 +3002,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
               <input
                 value={dayPlan.notes || ""}
                 onChange={(event) => saveDay(day, { notes: event.target.value })}
-                className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="min-h-11 w-full rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm"
                 placeholder="Notes"
               />
               {(dayPlan.recipeId || dayPlan.notes) && (
@@ -2592,7 +3024,7 @@ function WeeklyMenu({ householdId, recipes, stockItems }) {
   );
 }
 
-function Inventory({ householdId, householdName }) {
+function Inventory({ householdId }) {
   const { items, loading } = useStockItems(householdId);
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
@@ -2603,16 +3035,17 @@ function Inventory({ householdId, householdName }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [addingTemplate, setAddingTemplate] = useState(false);
+  const [clearingStock, setClearingStock] = useState(false);
   const [templateMessage, setTemplateMessage] = useState("");
-  const [hideCheckedShoppingItems, setHideCheckedShoppingItems] = useState(true);
+  const [hideCheckedShoppingItems, setHideCheckedShoppingItems] = useState(false);
 
   useEffect(() => {
     setMainView("weekly");
   }, [householdId]);
 
   const availableDefaultItems = useMemo(() => {
-    const existingNames = new Set(items.map((item) => normalize(item.name)));
-    return DEFAULT_PANTRY_ITEMS.filter((item) => !existingNames.has(normalize(item.name)));
+    const existingNames = new Set(items.map((item) => pantryItemKey(item.name)));
+    return DEFAULT_PANTRY_ITEMS.filter((item) => !existingNames.has(pantryItemKey(item.name)));
   }, [items]);
 
   const stockSummary = useMemo(() => {
@@ -2630,24 +3063,28 @@ function Inventory({ householdId, householdName }) {
   const statsStripItems = useMemo(
     () => [
       {
-        label: "Stock",
-        value: stockSummary.unitCount,
-        detail: `${stockSummary.productCount} products`,
+        label: "Menu",
+        value: "Plan",
+        detail: "this week",
+        targetView: "weekly",
       },
       {
         label: "Shopping",
         value: stockSummary.shoppingCount,
         detail: "open items",
+        targetView: "shopping",
+      },
+      {
+        label: "Inventory",
+        value: stockSummary.unitCount,
+        detail: `${stockSummary.productCount} products`,
+        targetView: "inventory",
       },
       {
         label: "Recipes",
         value: stockSummary.recipeCount,
         detail: "saved",
-      },
-      {
-        label: "Attention",
-        value: stockSummary.soonCount + stockSummary.expiredCount,
-        detail: "need attention",
+        targetView: "recipes",
       },
     ],
     [stockSummary]
@@ -2673,6 +3110,10 @@ function Inventory({ householdId, householdName }) {
     [inventoryProducts, groupBy]
   );
 
+  const currentView = MAIN_VIEWS.find((view) => view.id === mainView) || MAIN_VIEWS[4];
+  const showManagementControls = mainView === "overview";
+  const showInventoryViewControls = mainView === "inventory";
+
   const saveProduct = async (payload) => {
     if (editing) {
       await updateDoc(doc(db, "households", householdId, "stockItems", editing.id), {
@@ -2692,17 +3133,26 @@ function Inventory({ householdId, householdName }) {
   };
 
   const addDefaultPantryItems = async () => {
-    if (availableDefaultItems.length === 0) {
-      setTemplateMessage("Default pantry items are already in this household.");
-      return;
-    }
-
     setAddingTemplate(true);
     setTemplateMessage("");
     try {
+      const stockItemsRef = collection(db, "households", householdId, "stockItems");
+      const stockSnapshot = await getDocs(stockItemsRef);
+      const existingNames = new Set(
+        stockSnapshot.docs.map((itemDoc) => pantryItemKey(itemDoc.data().name))
+      );
+      const itemsToAdd = DEFAULT_PANTRY_ITEMS.filter(
+        (item) => !existingNames.has(pantryItemKey(item.name))
+      );
+
+      if (itemsToAdd.length === 0) {
+        setTemplateMessage("Default pantry items already exist in this household.");
+        return;
+      }
+
       const batch = writeBatch(db);
-      availableDefaultItems.forEach((item) => {
-        const itemRef = doc(collection(db, "households", householdId, "stockItems"));
+      itemsToAdd.forEach((item) => {
+        const itemRef = doc(stockItemsRef, defaultPantryDocId(item.name));
         batch.set(itemRef, {
           ...item,
           items: [genUnit(item.shelfLifeDays)],
@@ -2715,11 +3165,30 @@ function Inventory({ householdId, householdName }) {
         });
       });
       await batch.commit();
-      setTemplateMessage(`Added ${availableDefaultItems.length} default pantry items.`);
+      setTemplateMessage(`Added ${itemsToAdd.length} default pantry items.`);
     } catch (err) {
       setTemplateMessage(err.message || "Could not add default pantry items.");
     } finally {
       setAddingTemplate(false);
+    }
+  };
+
+  const clearStockItems = async () => {
+    if (!window.confirm("Are you sure? This will remove all stock items.")) return;
+
+    setClearingStock(true);
+    setTemplateMessage("");
+    try {
+      const deletedCount = await deleteCollectionDocs(
+        collection(db, "households", householdId, "stockItems")
+      );
+      setTemplateMessage(
+        deletedCount > 0 ? `Removed ${deletedCount} stock item(s).` : "Inventory is already empty."
+      );
+    } catch (err) {
+      setTemplateMessage(err.message || "Could not clear inventory.");
+    } finally {
+      setClearingStock(false);
     }
   };
 
@@ -2764,20 +3233,36 @@ function Inventory({ householdId, householdName }) {
     setModalOpen(false);
   };
 
-  const renderStockCards = (groups, emptyText, fullWidth = false) => (
+  const deleteStockItem = (product) => {
+    if (!window.confirm(`Delete "${product.name}" from inventory?`)) return;
+    deleteDoc(doc(db, "households", householdId, "stockItems", product.id));
+  };
+
+  const renderStockCards = (groups, emptyText, fullWidth = false, showDefaultPantryAction = false) => (
     <div>
       {loading ? (
         <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading stock...</div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
           <p>Add the first product to start this household inventory.</p>
-          <button
-            onClick={addDefaultPantryItems}
-            disabled={addingTemplate}
-            className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {addingTemplate ? "Adding..." : "Add default pantry items"}
-          </button>
+          {showDefaultPantryAction && (
+            <button
+              onClick={addDefaultPantryItems}
+              disabled={addingTemplate}
+              className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {addingTemplate ? "Adding..." : "Add default pantry items"}
+            </button>
+          )}
+          {!showDefaultPantryAction && (
+            <button
+              type="button"
+              onClick={() => setMainView("overview")}
+              className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
+            >
+              Open Management
+            </button>
+          )}
         </div>
       ) : groups.length === 0 ? (
         <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">{emptyText}</div>
@@ -2801,7 +3286,7 @@ function Inventory({ householdId, householdName }) {
                   }
                   onAddToShoppingList={() => addStockItemToShoppingList(product)}
                   onEdit={() => openEdit(product)}
-                  onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
+                  onDelete={() => deleteStockItem(product)}
                 />
               ))}
             </div>
@@ -2819,11 +3304,11 @@ function Inventory({ householdId, householdName }) {
         <div className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
           <p>Add the first product to start this household inventory.</p>
           <button
-            onClick={addDefaultPantryItems}
-            disabled={addingTemplate}
-            className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            type="button"
+            onClick={() => setMainView("overview")}
+            className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100"
           >
-            {addingTemplate ? "Adding..." : "Add default pantry items"}
+            Open Management
           </button>
         </div>
       ) : groups.length === 0 ? (
@@ -2848,7 +3333,7 @@ function Inventory({ householdId, householdName }) {
                   }
                   onAddToShoppingList={() => addStockItemToShoppingList(product)}
                   onEdit={() => openEdit(product)}
-                  onDelete={() => deleteDoc(doc(db, "households", householdId, "stockItems", product.id))}
+                  onDelete={() => deleteStockItem(product)}
                 />
               ))}
             </div>
@@ -2863,85 +3348,73 @@ function Inventory({ householdId, householdName }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            {MAIN_VIEWS.find((view) => view.id === mainView)?.label || "Overview"}
+            Current view
           </p>
           <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
-            {householdName}
+            <span aria-hidden="true">{currentView.icon}</span> {currentView.label}
           </h2>
         </div>
-        {mainView !== "weekly" && (
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setModalOpen(true)} className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-800">
-            + Add Product
-          </button>
-          <button
-            onClick={addDefaultPantryItems}
-            disabled={addingTemplate || loading || availableDefaultItems.length === 0}
-            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
-          >
-            {addingTemplate ? "Adding..." : "Add default pantry items"}
-          </button>
-          <label className="flex items-center gap-2 text-sm">
-            <span>Soon</span>
-            <input
-              type="number"
-              min={1}
-              value={soonDays}
-              onChange={(event) => setSoonDays(Math.max(1, Number(event.target.value) || 1))}
-              className="w-16 rounded-lg border px-2 py-1"
-            />
-          </label>
-          <select
-            value={groupBy}
-            onChange={(event) => setGroupBy(event.target.value)}
-            className="rounded-xl border px-2 py-2 text-sm"
-          >
-            <option value="Category">Group: Category</option>
-            <option value="Label">Group: Label</option>
-            <option value="Base">Group: Basisvare</option>
-            <option value="None">Group: None</option>
-          </select>
-        </div>
+        {showManagementControls && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
+            >
+              + Add Product
+            </button>
+            <button
+              onClick={addDefaultPantryItems}
+              disabled={addingTemplate || loading || availableDefaultItems.length === 0}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+            >
+              {addingTemplate ? "Adding..." : "Add default pantry items"}
+            </button>
+            <label className="flex items-center gap-2 text-sm">
+              <span>Expiring within</span>
+              <input
+                type="number"
+                min={1}
+                value={soonDays}
+                onChange={(event) => setSoonDays(Math.max(1, Number(event.target.value) || 1))}
+                className="w-16 rounded-lg border px-2 py-1"
+              />
+              <span>days</span>
+            </label>
+            <button
+              type="button"
+              onClick={clearStockItems}
+              disabled={clearingStock || items.length === 0}
+              className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              {clearingStock ? "Clearing..." : "Clear Inventory"}
+            </button>
+          </div>
+        )}
+        {showInventoryViewControls && (
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={groupBy}
+              onChange={(event) => setGroupBy(event.target.value)}
+              className="rounded-xl border px-2 py-2 text-sm"
+            >
+              <option value="Category">Group: Category</option>
+              <option value="Label">Group: Label</option>
+              <option value="Base">Group: Basisvare</option>
+              <option value="None">Group: None</option>
+            </select>
+          </div>
         )}
       </div>
-      {templateMessage && <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>}
+      {showManagementControls && templateMessage && (
+        <p className="mt-2 text-sm text-slate-500">{templateMessage}</p>
+      )}
     </div>
   );
 
   const renderOverview = () => (
     <>
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <button
-          type="button"
-          onClick={() => setMainView("inventory")}
-          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
-        >
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Stock</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.unitCount}</div>
-          <div className="text-xs text-slate-500">{stockSummary.productCount} products</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainView("shopping")}
-          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
-        >
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Shopping</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.shoppingCount}</div>
-          <div className="text-xs text-slate-500">open items</div>
-        </button>
-        <button
-          type="button"
-          onClick={() => setMainView("recipes")}
-          className="rounded-2xl border border-slate-200/70 bg-white p-3 text-left shadow-sm transition hover:bg-slate-50 hover:shadow-md"
-        >
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Recipes</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-950">{stockSummary.recipeCount}</div>
-          <div className="text-xs text-slate-500">saved</div>
-        </button>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        {renderStockCards(overviewGroups, "No matching stock items.")}
+        {renderStockCards(overviewGroups, "No matching stock items.", false, true)}
         <div className="space-y-4">
           <ShoppingListPanel
             householdId={householdId}
@@ -2950,9 +3423,15 @@ function Inventory({ householdId, householdName }) {
             stockItems={items}
             hideChecked={hideCheckedShoppingItems}
             setHideChecked={setHideCheckedShoppingItems}
+            onOpenInventory={() => setMainView("inventory")}
           />
           <RecipeManager householdId={householdId} stockItems={items} />
-          <WeeklyMenu householdId={householdId} recipes={recipes} stockItems={items} />
+          <WeeklyMenu
+            householdId={householdId}
+            recipes={recipes}
+            stockItems={items}
+            onOpenRecipes={() => setMainView("recipes")}
+          />
         </div>
       </div>
     </>
@@ -2966,7 +3445,7 @@ function Inventory({ householdId, householdName }) {
       <div className={inventoryMode === "multi" ? "grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
         {inventoryMode === "fridge"
           ? renderFridgeStockCards(inventoryGroups, "No fridge-view stock items yet.")
-          : renderStockCards(inventoryGroups, "Nothing is expiring soon or expired.")}
+          : renderStockCards(inventoryGroups, "Nothing is expiring within this window or expired.")}
         {inventoryMode === "multi" && (
           <div className="space-y-4">
             <ShoppingListPanel
@@ -2976,13 +3455,14 @@ function Inventory({ householdId, householdName }) {
               stockItems={items}
               hideChecked={hideCheckedShoppingItems}
               setHideChecked={setHideCheckedShoppingItems}
+              onOpenInventory={() => setMainView("inventory")}
             />
             <section className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-              <div className="text-lg font-bold text-slate-950">Soon & Expired</div>
+              <div className="text-lg font-bold text-slate-950">Expiring & Expired</div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl bg-amber-50 p-3 text-amber-800">
                   <div className="text-2xl font-semibold">{stockSummary.soonCount}</div>
-                  <div className="text-xs">Soon</div>
+                  <div className="text-xs">Expiring within {soonDays} days</div>
                 </div>
                 <div className="rounded-xl bg-rose-50 p-3 text-rose-800">
                   <div className="text-2xl font-semibold">{stockSummary.expiredCount}</div>
@@ -3004,7 +3484,7 @@ function Inventory({ householdId, householdName }) {
 
       {renderControls()}
       <div className="mb-6">
-        <StatsStrip stats={statsStripItems} />
+        <StatsStrip stats={statsStripItems} onStatClick={setMainView} />
       </div>
 
       {mainView === "overview" && renderOverview()}
@@ -3017,11 +3497,17 @@ function Inventory({ householdId, householdName }) {
           stockItems={items}
           hideChecked={hideCheckedShoppingItems}
           setHideChecked={setHideCheckedShoppingItems}
+          onOpenInventory={() => setMainView("inventory")}
         />
       )}
       {mainView === "recipes" && <RecipeManager householdId={householdId} stockItems={items} />}
       {mainView === "weekly" && (
-        <WeeklyMenu householdId={householdId} recipes={recipes} stockItems={items} />
+        <WeeklyMenu
+          householdId={householdId}
+          recipes={recipes}
+          stockItems={items}
+          onOpenRecipes={() => setMainView("recipes")}
+        />
       )}
 
       <ProductModal open={modalOpen} product={editing} onClose={closeModal} onSave={saveProduct} />
@@ -3105,7 +3591,7 @@ export default function App() {
   if (!firebaseReady) return <MissingFirebaseConfig />;
   if (authLoading) {
     return (
-      <main className="grid min-h-screen place-items-center bg-slate-100 text-sm text-slate-500">
+      <main className="grid min-h-screen place-items-center bg-stone-100 text-sm text-slate-500">
         Loading QuickStock...
       </main>
     );
@@ -3115,7 +3601,7 @@ export default function App() {
   const selectedHousehold = availableHouseholds.find((household) => household.id === selectedHouseholdId);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
+    <main className="min-h-screen bg-stone-100 p-3 sm:p-6">
       <div className="mx-auto max-w-6xl">
         <HouseholdBar
           user={user}
@@ -3132,10 +3618,7 @@ export default function App() {
         />
 
         {selectedHousehold ? (
-          <Inventory
-            householdId={selectedHousehold.id}
-            householdName={selectedHousehold.name || "Household"}
-          />
+          <Inventory householdId={selectedHousehold.id} />
         ) : (
           <section className="rounded-2xl border border-slate-200/70 bg-white p-4 text-sm text-slate-500 shadow-sm">
             Create a household to start tracking stock.
