@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">QuickStock icon</title>
+  <rect width="512" height="512" rx="112" fill="#047857"/>
+  <path fill="#f8fafc" d="M148 154h216c18 0 32 14 32 32v172c0 18-14 32-32 32H148c-18 0-32-14-32-32V186c0-18 14-32 32-32Z"/>
+  <path fill="#d1fae5" d="M148 154h216c18 0 32 14 32 32v46H116v-46c0-18 14-32 32-32Z"/>
+  <path fill="#064e3b" d="M164 206h184v26H164z"/>
+  <circle cx="198" cy="300" r="44" fill="#f59e0b"/>
+  <path fill="#047857" d="M276 278h76v28h-76zM276 326h58v28h-58z"/>
+  <path fill="#10b981" d="M188 260c5-30 29-52 64-57-3 35-24 55-64 57Z"/>
+</svg>

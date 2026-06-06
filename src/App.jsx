@@ -24,6 +24,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { auth, db, firebaseReady, googleProvider } from "./firebase";
+import starterStockItems from "../data/stockItems.seed.json";
+import demoRecipes from "../data/recipes.seed.json";
 
 const DAY = 24 * 60 * 60 * 1000;
 const STOCK_STATES = ["full", "opened", "empty", "expired"];
@@ -114,6 +116,8 @@ const getIsoWeekId = (date = new Date()) => {
   const week = 1 + Math.round((weekStart - firstWeekStart) / (7 * DAY));
   return `${thursday.getFullYear()}-W${String(week).padStart(2, "0")}`;
 };
+
+const getWeekDayKey = (date = new Date()) => WEEK_DAYS[(date.getDay() + 6) % 7];
 
 const shiftWeek = (weekStart, amount) => {
   const next = new Date(weekStart);
@@ -208,19 +212,6 @@ const EMOJI_GUESSES = [
   ["juice|saft", "🧃"],
 ];
 
-const DEFAULT_PANTRY_ITEMS = [
-  { name: "Milk", emoji: "🥛", packSize: 1, shelfLifeDays: 7 },
-  { name: "Eggs", emoji: "🥚", packSize: 12, shelfLifeDays: 28 },
-  { name: "Butter", emoji: "🧈", packSize: 1, shelfLifeDays: 60 },
-  { name: "Bread", emoji: "🍞", packSize: 1, shelfLifeDays: 5 },
-  { name: "Pasta", emoji: "🍝", packSize: 1, shelfLifeDays: 365 },
-  { name: "Cheese", emoji: "🧀", packSize: 1, shelfLifeDays: 21 },
-  { name: "Tomato sauce", emoji: "🥫", packSize: 1, shelfLifeDays: 365 },
-  { name: "Salt", emoji: "🧂", packSize: 1, shelfLifeDays: 3650 },
-  { name: "Onion", emoji: "🧅", packSize: 1, shelfLifeDays: 30 },
-  { name: "Potatoes", emoji: "🥔", packSize: 1, shelfLifeDays: 45 },
-];
-
 const ACTIVE_HOUSEHOLD_STORAGE_PREFIX = "quickstock.activeHouseholdId";
 const OPTIMISTIC_HOUSEHOLD_GRACE_MS = 15000;
 
@@ -261,8 +252,8 @@ const pantryItemKey = (name = "") => {
   return alias?.key || compact;
 };
 
-const defaultPantryDocId = (name = "") =>
-  `default-${pantryItemKey(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || genId()}`;
+const seedDocId = (entry, prefix) =>
+  entry.id || `${prefix}-${pantryItemKey(entry.name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 
 const activeHouseholdStorageKey = (userId) => `${ACTIVE_HOUSEHOLD_STORAGE_PREFIX}.${userId}`;
 
@@ -341,6 +332,18 @@ const countInStock = (units) =>
     0
   );
 
+const shoppingRestockAmount = (shoppingItem, stockItem = {}) => {
+  const quantity = Number(shoppingItem?.quantity);
+  if (quantity > 0) return Math.max(1, Math.ceil(quantity));
+
+  const packs = Math.max(1, Number(shoppingItem?.packs) || 1);
+  const packSize = Math.max(1, Number(stockItem?.packSize) || 1);
+  return Math.max(1, Math.ceil(packs * packSize));
+};
+
+const shoppingStockItemId = (shoppingItem = {}) =>
+  shoppingItem.sourceStockItemId || shoppingItem.stockItemId || "";
+
 const canConsumeUnit = (unit) => ["full", "opened", "expired"].includes(unit.state || "full");
 
 const soonCount = (units, days = 2, t = now()) => {
@@ -381,9 +384,24 @@ const deleteCollectionDocs = async (collectionRef) => {
   const snapshot = await getDocs(collectionRef);
   if (snapshot.empty) return 0;
 
-  const batch = writeBatch(db);
-  snapshot.docs.forEach((itemDoc) => batch.delete(itemDoc.ref));
-  await batch.commit();
+  let batch = writeBatch(db);
+  let pending = 0;
+
+  for (const itemDoc of snapshot.docs) {
+    batch.delete(itemDoc.ref);
+    pending += 1;
+
+    if (pending === 450) {
+      await batch.commit();
+      batch = writeBatch(db);
+      pending = 0;
+    }
+  }
+
+  if (pending > 0) {
+    await batch.commit();
+  }
+
   return snapshot.size;
 };
 
@@ -452,7 +470,7 @@ function StatsStrip({ stats, onStatClick }) {
           <Card
             key={stat.label}
             type={clickable ? "button" : undefined}
-            onClick={clickable ? () => onStatClick(stat.targetView) : undefined}
+            onClick={clickable ? () => onStatClick(stat) : undefined}
             className={`rounded-2xl border p-3.5 text-left shadow-sm transition hover:shadow-md ${style.className} ${
               clickable ? "cursor-pointer hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2" : ""
             }`}
@@ -465,7 +483,18 @@ function StatsStrip({ stats, onStatClick }) {
                 {style.icon}
               </div>
             </div>
-            <div className="mt-2 text-3xl font-bold leading-none">{stat.value}</div>
+            <div className="mt-2 flex items-center gap-2">
+              <div className={stat.valueClassName || "text-3xl font-bold leading-none"}>{stat.value}</div>
+              {stat.completed && (
+                <span
+                  className="shrink-0 rounded-full bg-emerald-700 px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none text-white"
+                  title="Completed"
+                  aria-label="Completed"
+                >
+                  Done
+                </span>
+              )}
+            </div>
             <div className="mt-1 text-xs opacity-70">{stat.detail}</div>
           </Card>
         );
@@ -500,6 +529,9 @@ function useAuthUser() {
     });
 
     getRedirectResult(auth)
+      .then((result) => {
+        if (active && result?.user) setUser(result.user);
+      })
       .catch((err) => {
         if (active) setRedirectError(authErrorMessage(err));
       })
@@ -1867,29 +1899,62 @@ function ShoppingListPanel({
         return;
       }
 
-      const stockItemId = latestShoppingItem.sourceStockItemId || shoppingItem.sourceStockItemId;
-      if (stockItemId) {
-        const stockRef = doc(db, "households", householdId, "stockItems", stockItemId);
-        const stockSnapshot = await transaction.get(stockRef);
-        if (stockSnapshot.exists()) {
-          const stockItem = { id: stockSnapshot.id, ...stockSnapshot.data() };
-          const packs = Math.max(1, Number(latestShoppingItem.packs) || 1);
-          const packSize = Math.max(1, Number(stockItem.packSize) || 1);
-          const restockAmount = Math.max(1, packs * packSize);
-          const nextUnits = toUnits(stockItem).concat(
-            Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
-          );
-          transaction.update(stockRef, {
-            items: nextUnits,
-            quantity: countInStock(nextUnits),
-            updatedAt: serverTimestamp(),
-          });
-        }
+      const linkedStockItemId = shoppingStockItemId(latestShoppingItem) || shoppingStockItemId(shoppingItem);
+      const itemName = (latestShoppingItem.name || shoppingItem.name || "").trim();
+      const matchingStockItem = stockItems.find((item) => normalize(item.name) === normalize(itemName));
+      let stockRef = linkedStockItemId
+        ? doc(db, "households", householdId, "stockItems", linkedStockItemId)
+        : null;
+      let stockSnapshot = stockRef ? await transaction.get(stockRef) : null;
+
+      if (!stockSnapshot?.exists() && matchingStockItem && matchingStockItem.id !== linkedStockItemId) {
+        stockRef = doc(db, "households", householdId, "stockItems", matchingStockItem.id);
+        stockSnapshot = await transaction.get(stockRef);
+      }
+
+      let resolvedStockItemId = stockSnapshot?.exists() ? stockSnapshot.id : "";
+      if (stockSnapshot?.exists()) {
+        const stockItem = { id: stockSnapshot.id, ...stockSnapshot.data() };
+        const restockAmount = shoppingRestockAmount(latestShoppingItem, stockItem);
+        const nextUnits = toUnits(stockItem).concat(
+          Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
+        );
+        transaction.update(stockRef, {
+          items: nextUnits,
+          quantity: countInStock(nextUnits),
+          updatedAt: serverTimestamp(),
+        });
+      } else if (itemName) {
+        const restockAmount = shoppingRestockAmount(latestShoppingItem);
+        const nextUnits = Array.from({ length: restockAmount }, () => genUnit(30));
+        stockRef = doc(collection(db, "households", householdId, "stockItems"));
+        resolvedStockItemId = stockRef.id;
+        transaction.set(stockRef, {
+          name: itemName,
+          emoji: latestShoppingItem.emoji || "🧺",
+          unit: latestShoppingItem.unit || "pcs",
+          packSize: restockAmount,
+          shelfLifeDays: 30,
+          freezer: false,
+          autoAddWhenEmpty: false,
+          isBase: false,
+          labels: ["Shopping"],
+          items: nextUnits,
+          quantity: countInStock(nextUnits),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
 
       transaction.update(shoppingRef, {
         checked: true,
         checkedAt: serverTimestamp(),
+        ...(resolvedStockItemId
+          ? {
+              sourceStockItemId: resolvedStockItemId,
+              stockItemId: resolvedStockItemId,
+            }
+          : {}),
         updatedAt: serverTimestamp(),
       });
     });
@@ -1945,8 +2010,9 @@ function ShoppingListPanel({
       ) : (
         <ul className="space-y-2.5">
           {visibleItems.map((item) => {
-            const sourceStockItem = item.sourceStockItemId
-              ? stockItems.find((stockItem) => stockItem.id === item.sourceStockItemId)
+            const sourceStockItemId = shoppingStockItemId(item);
+            const sourceStockItem = sourceStockItemId
+              ? stockItems.find((stockItem) => stockItem.id === sourceStockItemId)
               : null;
             const emoji = item.emoji || sourceStockItem?.emoji || pickEmoji(item.name);
             const checked = Boolean(item.checked);
@@ -2476,7 +2542,8 @@ function RecipeOpenModal({ recipe, onClose }) {
               disabled={steps.length === 0}
               className="rounded bg-black px-3 py-2 text-sm text-white hover:opacity-90 disabled:opacity-40"
             >
-              Start cooking
+              <span className="sm:hidden">Start</span>
+              <span className="hidden sm:inline">Start cooking</span>
             </button>
             <button onClick={onClose} className="rounded bg-slate-100 px-2 py-1 text-sm hover:bg-slate-200">
               Close
@@ -2520,7 +2587,7 @@ function RecipeOpenModal({ recipe, onClose }) {
   );
 }
 
-function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
+function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes, openRecipe, onOpenRecipe, onCloseRecipe }) {
   const [selectedWeekStart, setSelectedWeekStart] = useState(() => getStartOfIsoWeek(new Date()));
   const selectedWeekId = getIsoWeekId(selectedWeekStart);
   const selectedWeekStartDate = toDateInputValue(selectedWeekStart);
@@ -2529,7 +2596,6 @@ function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
   const [completingDay, setCompletingDay] = useState("");
   const [undoingDay, setUndoingDay] = useState("");
   const [message, setMessage] = useState("");
-  const [openRecipe, setOpenRecipe] = useState(null);
 
   const planRef = doc(db, "households", householdId, "weeklyPlans", selectedWeekId);
   const days = plan?.days || {};
@@ -2787,61 +2853,60 @@ function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
     setGenerating(true);
     setMessage("");
     try {
-      const required = new Map();
-
-      plannedEntries.forEach(({ recipe }) => {
-        (recipe.ingredients || []).forEach((ingredient) => {
-          const key = `${ingredient.stockItemId || ingredient.nameSnapshot}|${ingredient.unit || ""}`;
-          const current = required.get(key) || {
-            name: ingredient.nameSnapshot,
-            unit: ingredient.unit || "",
-            quantity: 0,
-            stockItemId: ingredient.stockItemId || "",
-            sourceRecipeId: recipe.id,
-            sourceRecipeIds: [],
-          };
-          current.quantity += Math.max(0, Number(ingredient.quantity) || 0);
-          current.sourceRecipeIds = Array.from(new Set([...current.sourceRecipeIds, recipe.id]));
-          required.set(key, current);
-        });
-      });
-
       const batch = writeBatch(db);
       let added = 0;
 
-      required.forEach((ingredient) => {
-        const stockItem = ingredient.stockItemId
-          ? stockItems.find((item) => item.id === ingredient.stockItemId)
-          : stockItems.find((item) => normalize(item.name) === normalize(ingredient.name));
-        const stockUnit = stockItem?.unit || "pcs";
-        const recipeUnit = ingredient.unit || "";
-        const unitsMatch = Boolean(stockItem) && recipeUnit && stockUnit === recipeUnit;
-        const available = unitsMatch ? countInStock(toUnits(stockItem)) : 0;
-        const missingQuantity = unitsMatch
-          ? Math.max(0, ingredient.quantity - available)
-          : ingredient.quantity;
-        const needsReview = !unitsMatch;
+      plannedEntries.forEach(({ day, recipe }) => {
+        (recipe.ingredients || []).forEach((ingredient) => {
+          const stockItem = ingredient.stockItemId
+            ? stockItems.find((item) => item.id === ingredient.stockItemId)
+            : stockItems.find((item) => normalize(item.name) === normalize(ingredient.nameSnapshot));
+          const stockUnit = stockItem?.unit || "pcs";
+          const recipeUnit = ingredient.unit || "";
+          const unitsMatch = Boolean(stockItem) && recipeUnit && stockUnit === recipeUnit;
+          const available = unitsMatch ? countInStock(toUnits(stockItem)) : 0;
+          const missingQuantity = unitsMatch
+            ? Math.max(0, Number(ingredient.quantity) || 0 - available)
+            : Math.max(0, Number(ingredient.quantity) || 0);
+          const needsReview = !unitsMatch;
 
-        if (missingQuantity <= 0 && !needsReview) return;
+          if (missingQuantity <= 0 && !needsReview) return;
 
-        const shoppingRef = doc(collection(db, "households", householdId, "shoppingList"));
-        batch.set(shoppingRef, {
-          name: ingredient.name,
-          quantity: missingQuantity,
-          unit: recipeUnit,
-          packs: 1,
-          checked: false,
-          needsReview,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          sourceStockItemId: stockItem?.id || ingredient.stockItemId || "",
-          sourceType: "weeklyPlan",
-          sourceRecipeId: ingredient.sourceRecipeId,
-          sourceRecipeIds: ingredient.sourceRecipeIds,
-          sourceWeeklyPlanId: selectedWeekId,
-          autoGenerated: true,
+          const existingItem = shoppingItems.find((item) => {
+            if (item.sourceType !== "weeklyPlan") return false;
+            if ((item.weekId || item.sourceWeeklyPlanId) !== selectedWeekId) return false;
+            if (item.dayKey !== day) return false;
+            if ((item.recipeId || item.sourceRecipeId) !== recipe.id) return false;
+            if ((item.ingredientStockItemId || "") !== (ingredient.stockItemId || "")) return false;
+            if (ingredient.stockItemId) return true;
+            return normalize(item.name) === normalize(ingredient.nameSnapshot) && (item.unit || "") === recipeUnit;
+          });
+
+          if (existingItem) return;
+
+          const shoppingRef = doc(collection(db, "households", householdId, "shoppingList"));
+          batch.set(shoppingRef, {
+            name: ingredient.nameSnapshot,
+            quantity: missingQuantity,
+            unit: recipeUnit,
+            packs: 1,
+            checked: false,
+            needsReview,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            sourceStockItemId: stockItem?.id || ingredient.stockItemId || "",
+            stockItemId: stockItem?.id || ingredient.stockItemId || "",
+            ingredientStockItemId: ingredient.stockItemId || "",
+            sourceType: "weeklyPlan",
+            sourceRecipeId: recipe.id,
+            recipeId: recipe.id,
+            sourceWeeklyPlanId: selectedWeekId,
+            weekId: selectedWeekId,
+            dayKey: day,
+            autoGenerated: true,
+          });
+          added += 1;
         });
-        added += 1;
       });
 
       if (added > 0) {
@@ -2957,17 +3022,33 @@ function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
                 {recipe && (
                   <div className="flex shrink-0 flex-wrap justify-end gap-2">
                     <button
-                      onClick={() => setOpenRecipe(recipe)}
+                      onClick={() => onOpenRecipe(recipe)}
                       className="min-h-10 rounded-xl border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium hover:bg-white"
                     >
-                      {(recipe.steps || []).length > 0 ? "Start Cooking" : "Open Recipe"}
+                      {(recipe.steps || []).length > 0 ? (
+                        <>
+                          <span className="sm:hidden">Start</span>
+                          <span className="hidden sm:inline">Start Cooking</span>
+                        </>
+                      ) : (
+                        "Open Recipe"
+                      )}
                     </button>
                     <button
                       onClick={() => markMealDone(day, recipe)}
                       disabled={consumed || completingDay === day}
                       className="min-h-10 rounded-xl bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-50"
                     >
-                      {consumed ? "Done" : completingDay === day ? "Saving..." : "Done Cooking"}
+                      {consumed ? (
+                        "Done"
+                      ) : completingDay === day ? (
+                        "Saving..."
+                      ) : (
+                        <>
+                          <span className="sm:hidden">Done</span>
+                          <span className="hidden sm:inline">Done Cooking</span>
+                        </>
+                      )}
                     </button>
                     {consumed && (
                       <button
@@ -3019,7 +3100,7 @@ function WeeklyMenu({ householdId, recipes, stockItems, onOpenRecipes }) {
       </div>
 
       {message && <p className="mt-3 text-sm text-slate-500">{message}</p>}
-      <RecipeOpenModal recipe={openRecipe} onClose={() => setOpenRecipe(null)} />
+      <RecipeOpenModal recipe={openRecipe} onClose={onCloseRecipe} />
     </section>
   );
 }
@@ -3028,25 +3109,28 @@ function Inventory({ householdId }) {
   const { items, loading } = useStockItems(householdId);
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
+  const today = new Date();
+  const todayWeekId = getIsoWeekId(today);
+  const todayDay = getWeekDayKey(today);
+  const { plan: todayPlan } = useWeeklyPlan(householdId, todayWeekId);
   const [mainView, setMainView] = useState("weekly");
   const [inventoryMode, setInventoryMode] = useState("fridge");
   const [groupBy, setGroupBy] = useState("Category");
   const [soonDays, setSoonDays] = useState(2);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [addingTemplate, setAddingTemplate] = useState(false);
+  const [addingStarterPantry, setAddingStarterPantry] = useState(false);
+  const [addingDemoRecipes, setAddingDemoRecipes] = useState(false);
   const [clearingStock, setClearingStock] = useState(false);
+  const [clearingRecipes, setClearingRecipes] = useState(false);
   const [templateMessage, setTemplateMessage] = useState("");
   const [hideCheckedShoppingItems, setHideCheckedShoppingItems] = useState(false);
+  const [openRecipe, setOpenRecipe] = useState(null);
 
   useEffect(() => {
     setMainView("weekly");
+    setOpenRecipe(null);
   }, [householdId]);
-
-  const availableDefaultItems = useMemo(() => {
-    const existingNames = new Set(items.map((item) => pantryItemKey(item.name)));
-    return DEFAULT_PANTRY_ITEMS.filter((item) => !existingNames.has(pantryItemKey(item.name)));
-  }, [items]);
 
   const stockSummary = useMemo(() => {
     const signals = items.map((item) => getStockSignals(item, soonDays));
@@ -3060,12 +3144,20 @@ function Inventory({ householdId }) {
     };
   }, [items, recipes.length, shoppingItems, soonDays]);
 
-  const statsStripItems = useMemo(
-    () => [
+  const todayMealPlan = todayPlan?.days?.[todayDay] || {};
+  const todayRecipe = useMemo(
+    () => recipes.find((recipe) => recipe.id === todayMealPlan.recipeId),
+    [recipes, todayMealPlan.recipeId]
+  );
+
+  const statsStripItems = useMemo(() => {
+    return [
       {
         label: "Menu",
-        value: "Plan",
-        detail: "this week",
+        value: todayRecipe?.name || "No meal planned",
+        valueClassName: "max-w-full break-words text-xl font-bold leading-tight",
+        detail: "today",
+        completed: Boolean(todayRecipe && todayMealPlan.consumedAt),
         targetView: "weekly",
       },
       {
@@ -3086,9 +3178,17 @@ function Inventory({ householdId }) {
         detail: "saved",
         targetView: "recipes",
       },
-    ],
-    [stockSummary]
-  );
+    ];
+  }, [stockSummary, todayMealPlan.consumedAt, todayRecipe]);
+
+  const handleStatClick = (stat) => {
+    if (!stat?.targetView) return;
+
+    setMainView(stat.targetView);
+    if (stat.targetView === "weekly") {
+      setOpenRecipe(todayRecipe || null);
+    }
+  };
 
   const overviewGroups = useMemo(() => groupStockProducts(items, groupBy), [items, groupBy]);
 
@@ -3132,44 +3232,84 @@ function Inventory({ householdId }) {
     setModalOpen(false);
   };
 
-  const addDefaultPantryItems = async () => {
-    setAddingTemplate(true);
+  const addStarterPantryItems = async () => {
+    setAddingStarterPantry(true);
     setTemplateMessage("");
     try {
       const stockItemsRef = collection(db, "households", householdId, "stockItems");
       const stockSnapshot = await getDocs(stockItemsRef);
+      const existingIds = new Set(stockSnapshot.docs.map((itemDoc) => itemDoc.id));
       const existingNames = new Set(
         stockSnapshot.docs.map((itemDoc) => pantryItemKey(itemDoc.data().name))
       );
-      const itemsToAdd = DEFAULT_PANTRY_ITEMS.filter(
-        (item) => !existingNames.has(pantryItemKey(item.name))
+      const itemsToAdd = starterStockItems.filter(
+        (item) => !existingIds.has(seedDocId(item, "stock")) && !existingNames.has(pantryItemKey(item.name))
       );
+      const skipped = starterStockItems.length - itemsToAdd.length;
 
-      if (itemsToAdd.length === 0) {
-        setTemplateMessage("Default pantry items already exist in this household.");
-        return;
+      if (itemsToAdd.length > 0) {
+        const batch = writeBatch(db);
+        itemsToAdd.forEach((item) => {
+          const data = { ...item };
+          delete data.id;
+          batch.set(doc(stockItemsRef, seedDocId(item, "stock")), {
+            ...data,
+            items: Array.isArray(data.items) ? data.items : [],
+            quantity: Math.max(0, Number(data.quantity) || 0),
+            labels: Array.isArray(data.labels) ? data.labels : ["Starter"],
+            seeded: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
       }
 
-      const batch = writeBatch(db);
-      itemsToAdd.forEach((item) => {
-        const itemRef = doc(stockItemsRef, defaultPantryDocId(item.name));
-        batch.set(itemRef, {
-          ...item,
-          items: [genUnit(item.shelfLifeDays)],
-          labels: ["Starter"],
-          freezer: false,
-          autoAddWhenEmpty: false,
-          isBase: ["Pasta", "Salt", "Potatoes", "Onion"].includes(item.name),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      });
-      await batch.commit();
-      setTemplateMessage(`Added ${itemsToAdd.length} default pantry items.`);
+      setTemplateMessage(`Starter pantry import: added ${itemsToAdd.length}, skipped ${skipped} existing.`);
     } catch (err) {
-      setTemplateMessage(err.message || "Could not add default pantry items.");
+      setTemplateMessage(err.message || "Could not add starter pantry items.");
     } finally {
-      setAddingTemplate(false);
+      setAddingStarterPantry(false);
+    }
+  };
+
+  const addDemoRecipes = async () => {
+    setAddingDemoRecipes(true);
+    setTemplateMessage("");
+    try {
+      const recipesRef = collection(db, "households", householdId, "recipes");
+      const recipeSnapshot = await getDocs(recipesRef);
+      const existingIds = new Set(recipeSnapshot.docs.map((recipeDoc) => recipeDoc.id));
+      const existingNames = new Set(
+        recipeSnapshot.docs.map((recipeDoc) => normalize(recipeDoc.data().name))
+      );
+      const recipesToAdd = demoRecipes.filter(
+        (recipe) => !existingIds.has(seedDocId(recipe, "recipe")) && !existingNames.has(normalize(recipe.name))
+      );
+      const skipped = demoRecipes.length - recipesToAdd.length;
+
+      if (recipesToAdd.length > 0) {
+        const batch = writeBatch(db);
+        recipesToAdd.forEach((recipe) => {
+          const data = { ...recipe };
+          delete data.id;
+          batch.set(doc(recipesRef, seedDocId(recipe, "recipe")), {
+            ...data,
+            ingredients: Array.isArray(data.ingredients) ? data.ingredients : [],
+            steps: Array.isArray(data.steps) ? data.steps : [],
+            seeded: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      }
+
+      setTemplateMessage(`Demo recipe import: added ${recipesToAdd.length}, skipped ${skipped} existing.`);
+    } catch (err) {
+      setTemplateMessage(err.message || "Could not add demo recipes.");
+    } finally {
+      setAddingDemoRecipes(false);
     }
   };
 
@@ -3192,9 +3332,28 @@ function Inventory({ householdId }) {
     }
   };
 
+  const clearAllRecipes = async () => {
+    if (!window.confirm("Are you sure? This will delete all recipes.")) return;
+
+    setClearingRecipes(true);
+    setTemplateMessage("");
+    try {
+      const deletedCount = await deleteCollectionDocs(
+        collection(db, "households", householdId, "recipes")
+      );
+      setTemplateMessage(
+        deletedCount > 0 ? `Deleted ${deletedCount} recipe(s).` : "Recipes are already empty."
+      );
+    } catch (err) {
+      setTemplateMessage(err.message || "Could not clear recipes.");
+    } finally {
+      setClearingRecipes(false);
+    }
+  };
+
   const addStockItemToShoppingList = async (product) => {
     const existingItem = shoppingItems.find(
-      (item) => !item.checked && item.sourceStockItemId === product.id
+      (item) => !item.checked && shoppingStockItemId(item) === product.id
     );
 
     if (existingItem) {
@@ -3203,6 +3362,8 @@ function Inventory({ householdId }) {
         quantity:
           (Math.max(1, Number(existingItem.packs) || 1) + 1) *
           Math.max(1, Number(product.packSize) || 1),
+        sourceStockItemId: product.id,
+        stockItemId: product.id,
         updatedAt: serverTimestamp(),
       });
       return;
@@ -3216,6 +3377,7 @@ function Inventory({ householdId }) {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       sourceStockItemId: product.id,
+      stockItemId: product.id,
       sourceType: "manual",
       sourceRecipeId: null,
       sourceWeeklyPlanId: null,
@@ -3247,11 +3409,11 @@ function Inventory({ householdId }) {
           <p>Add the first product to start this household inventory.</p>
           {showDefaultPantryAction && (
             <button
-              onClick={addDefaultPantryItems}
-              disabled={addingTemplate}
+              onClick={addStarterPantryItems}
+              disabled={addingStarterPantry}
               className="mt-3 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
-              {addingTemplate ? "Adding..." : "Add default pantry items"}
+              {addingStarterPantry ? "Adding..." : "Add starter pantry items"}
             </button>
           )}
           {!showDefaultPantryAction && (
@@ -3363,11 +3525,18 @@ function Inventory({ householdId }) {
               + Add Product
             </button>
             <button
-              onClick={addDefaultPantryItems}
-              disabled={addingTemplate || loading || availableDefaultItems.length === 0}
+              onClick={addStarterPantryItems}
+              disabled={addingStarterPantry || loading}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
             >
-              {addingTemplate ? "Adding..." : "Add default pantry items"}
+              {addingStarterPantry ? "Adding..." : "Add starter pantry items"}
+            </button>
+            <button
+              onClick={addDemoRecipes}
+              disabled={addingDemoRecipes}
+              className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {addingDemoRecipes ? "Adding..." : "Add demo recipes"}
             </button>
             <label className="flex items-center gap-2 text-sm">
               <span>Expiring within</span>
@@ -3387,6 +3556,14 @@ function Inventory({ householdId }) {
               className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
             >
               {clearingStock ? "Clearing..." : "Clear Inventory"}
+            </button>
+            <button
+              type="button"
+              onClick={clearAllRecipes}
+              disabled={clearingRecipes || recipes.length === 0}
+              className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+            >
+              {clearingRecipes ? "Clearing..." : "Clear all recipes"}
             </button>
           </div>
         )}
@@ -3431,6 +3608,9 @@ function Inventory({ householdId }) {
             recipes={recipes}
             stockItems={items}
             onOpenRecipes={() => setMainView("recipes")}
+            openRecipe={openRecipe}
+            onOpenRecipe={setOpenRecipe}
+            onCloseRecipe={() => setOpenRecipe(null)}
           />
         </div>
       </div>
@@ -3484,7 +3664,7 @@ function Inventory({ householdId }) {
 
       {renderControls()}
       <div className="mb-6">
-        <StatsStrip stats={statsStripItems} onStatClick={setMainView} />
+        <StatsStrip stats={statsStripItems} onStatClick={handleStatClick} />
       </div>
 
       {mainView === "overview" && renderOverview()}
@@ -3507,6 +3687,9 @@ function Inventory({ householdId }) {
           recipes={recipes}
           stockItems={items}
           onOpenRecipes={() => setMainView("recipes")}
+          openRecipe={openRecipe}
+          onOpenRecipe={setOpenRecipe}
+          onCloseRecipe={() => setOpenRecipe(null)}
         />
       )}
 

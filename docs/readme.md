@@ -17,6 +17,9 @@ Contains:
 - shopping logic
 - roadmap
 
+### IOS_PWA_FIREBASE_AUTH.md
+Firebase Auth setup notes for Google sign-in in installed iOS PWA mode.
+
 ---
 
 ## Philosophy
