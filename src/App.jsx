@@ -599,8 +599,10 @@ const groupStockProducts = (products, groupBy) => {
     .map(([key, products]) => [
       key,
       products.slice().sort((a, b) => {
-        const availabilitySort = Number(isStockItemAvailable(b)) - Number(isStockItemAvailable(a));
-        if (availabilitySort !== 0) return availabilitySort;
+        if (groupBy === "None") {
+          const availabilitySort = Number(isStockItemAvailable(b)) - Number(isStockItemAvailable(a));
+          if (availabilitySort !== 0) return availabilitySort;
+        }
         return a.name.localeCompare(b.name, "nb", { sensitivity: "base" });
       }),
     ]);
@@ -2065,6 +2067,15 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
         </button>
         <button
           type="button"
+          onClick={onAddToShoppingList}
+          className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-white/85 px-4 py-2 text-lg shadow-sm hover:bg-white"
+          aria-label={`Add ${product.name} to shopping list`}
+          title="Add to list"
+        >
+          🛒
+        </button>
+        <button
+          type="button"
           onClick={() => changeSome(["opened", "full", "expired"], "empty", 1)}
           disabled={count === 0}
           className="grid min-h-11 min-w-11 touch-manipulation place-items-center rounded-full bg-white/85 px-4 py-2 text-lg font-bold text-slate-800 shadow-sm hover:bg-white disabled:opacity-40"
@@ -2136,9 +2147,6 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
             className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white"
           >
             Expire
-          </button>
-          <button onClick={onAddToShoppingList} className="min-h-10 rounded-full bg-white/80 px-3 py-1.5 text-sm hover:bg-white">
-            Add to list
           </button>
           <button
             onClick={onDelete}
@@ -3442,7 +3450,7 @@ function Inventory({ householdId }) {
   const { plan: todayPlan } = useWeeklyPlan(householdId, todayWeekId);
   const [mainView, setMainView] = useState("weekly");
   const [inventoryMode, setInventoryMode] = useState("fridge");
-  const [groupBy, setGroupBy] = useState("Category");
+  const [groupBy, setGroupBy] = useState("None");
   const [soonDays, setSoonDays] = useState(2);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
