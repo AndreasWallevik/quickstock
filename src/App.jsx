@@ -2364,12 +2364,17 @@ function ShoppingListPanel({
 
 const emptyIngredient = () => ({
   stockItemId: "",
-  createStockItem: false,
   nameSnapshot: "",
   emoji: "🧺",
   quantity: 1,
   unit: "pcs",
+  stockSearchText: "",
 });
+
+const isGenericIngredientName = (name = "") => {
+  const normalized = normalize(name.trim());
+  return !normalized || ["ingredient", "item", "vare"].includes(normalized);
+};
 
 function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -2391,18 +2396,22 @@ function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }
       servings: recipe?.servings || 4,
       ingredients:
         recipe?.ingredients?.length > 0
-          ? recipe.ingredients.map((ingredient) => ({
-              stockItemId: ingredient.stockItemId || "",
-              createStockItem: false,
-              nameSnapshot: ingredient.nameSnapshot || "",
-              emoji: pickEmoji(ingredient.nameSnapshot || ""),
-              quantity: ingredient.quantity ?? 1,
-              unit: ingredient.unit || "pcs",
-            }))
+          ? recipe.ingredients.map((ingredient) => {
+              const linkedStockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
+              const ingredientName = ingredient.nameSnapshot || "";
+              return {
+                stockItemId: ingredient.stockItemId || "",
+                nameSnapshot: ingredientName,
+                emoji: pickEmoji(ingredientName || linkedStockItem?.name || ""),
+                quantity: ingredient.quantity ?? 1,
+                unit: ingredient.unit || "pcs",
+                stockSearchText: linkedStockItem?.name || ingredientName,
+              };
+            })
           : [emptyIngredient()],
       stepsText: (recipe?.steps || []).join("\n"),
     });
-  }, [open, recipe]);
+  }, [open, recipe, stockItems]);
 
   if (!open) return null;
 
@@ -2425,6 +2434,41 @@ function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }
     }));
   };
 
+  const selectIngredientStockItem = (index, stockItem) => {
+    setForm((current) => ({
+      ...current,
+      ingredients: current.ingredients.map((ingredient, ingredientIndex) => {
+        if (ingredientIndex !== index) return ingredient;
+
+        const previousStockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
+        const currentName = ingredient.nameSnapshot.trim();
+        const shouldUseStockName =
+          isGenericIngredientName(currentName) ||
+          normalize(currentName) === normalize(previousStockItem?.name || "");
+
+        return {
+          ...ingredient,
+          stockItemId: stockItem.id,
+          stockSearchText: stockItem.name,
+          nameSnapshot: shouldUseStockName ? stockItem.name : ingredient.nameSnapshot,
+          emoji: ingredient.emoji || stockItem.emoji || pickEmoji(stockItem.name),
+        };
+      }),
+    }));
+  };
+
+  const unlinkIngredientStockItem = (index) => {
+    updateIngredient(index, { stockItemId: "" });
+  };
+
+  const getStockItemSearchMatches = (query) => {
+    const normalizedQuery = normalize(query || "");
+    if (!normalizedQuery) return [];
+    return stockItems
+      .filter((item) => normalize(item.name).includes(normalizedQuery))
+      .slice(0, 6);
+  };
+
   const saveRecipe = async () => {
     const name = form.name.trim();
     if (!name) return;
@@ -2437,42 +2481,15 @@ function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }
         const quantity = recipeQuantityText(ingredient.quantity);
         if (!quantity) continue;
 
-        if (ingredient.createStockItem) {
-          const itemName = ingredient.nameSnapshot.trim();
-          if (!itemName) continue;
-          const newStockRef = await addDoc(
-            collection(db, "households", householdId, "stockItems"),
-            {
-              name: itemName,
-              emoji: ingredient.emoji || pickEmoji(itemName),
-              packSize: 1,
-              shelfLifeDays: 30,
-              freezer: false,
-              autoAddWhenEmpty: false,
-              isBase: false,
-              labels: ["Recipe"],
-              items: [],
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }
-          );
-          ingredients.push({
-            stockItemId: newStockRef.id,
-            nameSnapshot: itemName,
-            quantity,
-            unit: ingredient.unit || "pcs",
-          });
-        } else {
-          const stockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
-          const itemName = stockItem?.name || ingredient.nameSnapshot.trim();
-          if (!itemName) continue;
-          ingredients.push({
-            stockItemId: ingredient.stockItemId || "",
-            nameSnapshot: itemName,
-            quantity,
-            unit: ingredient.unit || "pcs",
-          });
-        }
+        const stockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
+        const itemName = ingredient.nameSnapshot.trim() || stockItem?.name || "";
+        if (!itemName) continue;
+        ingredients.push({
+          stockItemId: stockItem?.id || "",
+          nameSnapshot: itemName,
+          quantity,
+          unit: ingredient.unit || "pcs",
+        });
       }
 
       const payload = {
@@ -2560,10 +2577,13 @@ function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }
           </div>
 
           <div className="space-y-2">
-            {form.ingredients.map((ingredient, index) => (
-              <div key={index} className="rounded-lg border border-slate-200 p-2">
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
-                  {ingredient.createStockItem ? (
+            {form.ingredients.map((ingredient, index) => {
+              const linkedStockItem = stockItems.find((item) => item.id === ingredient.stockItemId);
+              const stockMatches = getStockItemSearchMatches(ingredient.stockSearchText);
+
+              return (
+                <div key={index} className="rounded-lg border border-slate-200 p-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
                     <input
                       value={ingredient.nameSnapshot}
                       onChange={(event) =>
@@ -2573,64 +2593,80 @@ function RecipeModal({ open, recipe, stockItems, householdId, onClose, onSaved }
                         })
                       }
                       className="rounded border px-2 py-1 text-sm"
-                      placeholder="New stock item name"
+                      placeholder="Ingredient"
                     />
-                  ) : (
-                    <select
-                      value={ingredient.stockItemId}
-                      onChange={(event) => {
-                        const stockItem = stockItems.find((item) => item.id === event.target.value);
-                        updateIngredient(index, {
-                          stockItemId: event.target.value,
-                          nameSnapshot: stockItem?.name || "",
-                          unit: ingredient.unit || "pcs",
-                        });
-                      }}
+                    <input
+                      type="text"
+                      value={ingredient.quantity}
+                      onChange={(event) => updateIngredient(index, { quantity: event.target.value })}
                       className="rounded border px-2 py-1 text-sm"
+                      placeholder="Qty"
+                    />
+                    <input
+                      value={ingredient.unit}
+                      onChange={(event) => updateIngredient(index, { unit: event.target.value })}
+                      className="rounded border px-2 py-1 text-sm"
+                      placeholder="unit"
+                    />
+                    <button
+                      onClick={() => removeIngredient(index)}
+                      className="rounded border border-rose-200 px-2 py-1 text-sm text-rose-700 hover:bg-rose-50"
                     >
-                      <option value="">Select stock item</option>
-                      {stockItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-start">
+                    <label className="text-xs font-medium text-slate-600">
+                      Search stock item
+                      <input
+                        value={ingredient.stockSearchText || ""}
+                        onChange={(event) =>
+                          updateIngredient(index, {
+                            stockSearchText: event.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded border px-2 py-1 text-sm font-normal text-slate-900"
+                        placeholder="Type to link inventory item"
+                      />
+                    </label>
+                    <div className="flex min-h-9 flex-wrap items-center gap-2 text-xs">
+                      {linkedStockItem ? (
+                        <>
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 font-medium text-emerald-800">
+                            ✓ {linkedStockItem.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => unlinkIngredientStockItem(index)}
+                            className="rounded-full border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50"
+                          >
+                            Unlink
+                          </button>
+                        </>
+                      ) : (
+                        <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-600">Not linked</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {stockMatches.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {stockMatches.map((stockItem) => (
+                        <button
+                          key={stockItem.id}
+                          type="button"
+                          onClick={() => selectIngredientStockItem(index, stockItem)}
+                          className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                        >
+                          {stockItem.emoji || pickEmoji(stockItem.name)} {stockItem.name}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   )}
-                  <input
-                    type="text"
-                    value={ingredient.quantity}
-                    onChange={(event) => updateIngredient(index, { quantity: event.target.value })}
-                    className="rounded border px-2 py-1 text-sm"
-                    placeholder="Qty"
-                  />
-                  <input
-                    value={ingredient.unit}
-                    onChange={(event) => updateIngredient(index, { unit: event.target.value })}
-                    className="rounded border px-2 py-1 text-sm"
-                    placeholder="unit"
-                  />
-                  <button
-                    onClick={() => removeIngredient(index)}
-                    className="rounded border border-rose-200 px-2 py-1 text-sm text-rose-700 hover:bg-rose-50"
-                  >
-                    Remove
-                  </button>
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={ingredient.createStockItem}
-                    onChange={(event) =>
-                      updateIngredient(index, {
-                        createStockItem: event.target.checked,
-                        stockItemId: event.target.checked ? "" : ingredient.stockItemId,
-                      })
-                    }
-                  />
-                  Create this as a new stock item
-                </label>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
