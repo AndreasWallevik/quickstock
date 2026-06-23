@@ -47,6 +47,7 @@ const MAIN_VIEWS = [
 ];
 const INVENTORY_MODES = [
   { id: "fridge", label: "Fridge View" },
+  { id: "freezer", label: "Freezer View" },
   { id: "multi", label: "Multi View" },
 ];
 const STAT_CARD_STYLES = {
@@ -3663,6 +3664,9 @@ function Inventory({ householdId }) {
     if (inventoryMode === "fridge") {
       return items.filter((product) => !product.freezer);
     }
+    if (inventoryMode === "freezer") {
+      return items.filter((product) => product.freezer);
+    }
     if (inventoryMode === "expiring") {
       return items.filter((product) => {
         const signals = getStockSignals(product, soonDays);
@@ -4093,7 +4097,12 @@ function Inventory({ householdId }) {
       <div className={inventoryMode === "multi" ? "grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
         {inventoryMode === "fridge"
           ? renderFridgeStockCards(inventoryGroups, "No fridge-view stock items yet.")
-          : renderStockCards(inventoryGroups, "Nothing is expiring within this window or expired.")}
+          : renderStockCards(
+              inventoryGroups,
+              inventoryMode === "freezer"
+                ? "No frozen items yet."
+                : "Nothing is expiring within this window or expired."
+            )}
         {inventoryMode === "multi" && (
           <div className="space-y-4">
             <ShoppingListPanel
