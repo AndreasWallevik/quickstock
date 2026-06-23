@@ -464,16 +464,29 @@ const getAvailableStockUnitCount = (stockItem) =>
 
 const isStockItemAvailable = (stockItem) => getAvailableStockUnitCount(stockItem) > 0;
 
-const getStockAvailability = (stockItems = []) => {
-  const byId = new Map();
-  stockItems.forEach((item) => {
-    byId.set(item.id, isStockItemAvailable(item));
-  });
-  return byId;
+const isRecipePieceUnit = (unit) => `${unit || ""}`.trim().toLowerCase() === "pcs";
+
+const getRecipeIngredientStockUnits = (ingredient) => {
+  if (!isRecipePieceUnit(ingredient?.unit)) return 1;
+  return Math.max(0, Math.ceil(Number(ingredient?.quantity) || 0));
 };
 
+const getRecipeIngredientMissingPacks = (ingredient, stockItem) => {
+  const availableUnits = stockItem ? getAvailableStockUnitCount(stockItem) : 0;
+  if (!isRecipePieceUnit(ingredient?.unit)) return availableUnits > 0 ? 0 : 1;
+
+  const missingUnits = Math.max(0, getRecipeIngredientStockUnits(ingredient) - availableUnits);
+  const packSize = Math.max(1, Number(stockItem?.packSize) || 1);
+  return Math.ceil(missingUnits / packSize);
+};
+
+const shouldDepleteStockItemOnCook = (stockItem = {}) =>
+  stockItem.depleteOnCook === undefined
+    ? !stockItem.isBase
+    : stockItem.depleteOnCook !== false;
+
+
 const getRecipeReadiness = (recipe, stockItems = []) => {
-  const availabilityById = getStockAvailability(stockItems);
   const stockById = new Map(stockItems.map((item) => [item.id, item]));
   const ingredients = recipe?.ingredients || [];
   let needsReview = ingredients.length === 0;
@@ -490,7 +503,7 @@ const getRecipeReadiness = (recipe, stockItems = []) => {
       return;
     }
 
-    if (!availabilityById.get(ingredient.stockItemId)) {
+    if (getRecipeIngredientMissingPacks(ingredient, stockById.get(ingredient.stockItemId)) > 0) {
       missingStockItemIds.add(ingredient.stockItemId);
     }
   });
@@ -1624,6 +1637,7 @@ function ProductModal({ open, product, onClose, onSave }) {
     freezer: false,
     autoAddWhenEmpty: false,
     isBase: false,
+    depleteOnCook: true,
     labelsText: "",
   });
 
@@ -1637,6 +1651,7 @@ function ProductModal({ open, product, onClose, onSave }) {
       freezer: Boolean(product?.freezer),
       autoAddWhenEmpty: Boolean(product?.autoAddWhenEmpty),
       isBase: Boolean(product?.isBase),
+      depleteOnCook: shouldDepleteStockItemOnCook(product),
       labelsText: (product?.labels || []).join(", "),
     });
   }, [open, product]);
@@ -1654,6 +1669,7 @@ function ProductModal({ open, product, onClose, onSave }) {
       freezer: Boolean(form.freezer),
       autoAddWhenEmpty: Boolean(form.autoAddWhenEmpty),
       isBase: Boolean(form.isBase),
+      depleteOnCook: Boolean(form.depleteOnCook),
       labels: form.labelsText
         .split(",")
         .map((label) => label.trim())
@@ -1749,9 +1765,25 @@ function ProductModal({ open, product, onClose, onSave }) {
             <input
               type="checkbox"
               checked={form.isBase}
-              onChange={(event) => setForm((current) => ({ ...current, isBase: event.target.checked }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  isBase: event.target.checked,
+                  depleteOnCook: event.target.checked ? false : current.depleteOnCook,
+                }))
+              }
             />
             Basisvare
+          </label>
+          <label className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={form.depleteOnCook}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, depleteOnCook: event.target.checked }))
+              }
+            />
+            Used up when cooking
           </label>
         </div>
         <div className="mt-4 flex items-center justify-between">
@@ -3029,9 +3061,7 @@ function WeeklyMenu({
           return;
         }
 
-        // TODO: Support fractional quantities and unit conversion. For v1, stock is consumed
-        // as whole household units so cooking reduces maintenance without blocking the flow.
-        const quantity = Math.max(0, Math.ceil(Number(ingredient.quantity) || 0));
+        const quantity = getRecipeIngredientStockUnits(ingredient);
         if (quantity <= 0) return;
 
         const current = requiredByStockItem.get(ingredient.stockItemId) || {
@@ -3049,6 +3079,7 @@ function WeeklyMenu({
           skipped.push(`${required.names.join(", ")}: stock item not found`);
           return;
         }
+        if (!shouldDepleteStockItemOnCook(stockItem)) return;
 
         let remaining = required.quantity;
         const consumedUnits = [];
@@ -3231,7 +3262,6 @@ function WeeklyMenu({
     setMessage("");
     try {
       const batch = writeBatch(db);
-      const availabilityById = getStockAvailability(stockItems);
       let added = 0;
 
       plannedEntries.forEach(({ day, recipe }) => {
@@ -3239,13 +3269,12 @@ function WeeklyMenu({
           const stockItem = ingredient.stockItemId
             ? stockItems.find((item) => item.id === ingredient.stockItemId)
             : stockItems.find((item) => normalize(item.name) === normalize(ingredient.nameSnapshot));
-          const isAvailable = stockItem ? Boolean(availabilityById.get(stockItem.id)) : false;
           const requiredQuantity = recipeQuantityText(ingredient.quantity);
           const recipeUnit = ingredient.unit || "";
-          const missingQuantity = isAvailable ? 0 : 1;
+          const missingPacks = getRecipeIngredientMissingPacks(ingredient, stockItem);
           const needsReview = !stockItem || !ingredient.stockItemId;
 
-          if (missingQuantity <= 0) return;
+          if (missingPacks <= 0) return;
 
           const existingItem = shoppingItems.find((item) => {
             if (item.sourceType !== "weeklyPlan") return false;
@@ -3262,9 +3291,9 @@ function WeeklyMenu({
           const shoppingRef = doc(collection(db, "households", householdId, "shoppingList"));
           batch.set(shoppingRef, {
             name: ingredient.nameSnapshot,
-            quantity: 1,
+            quantity: missingPacks,
             unit: recipeUnit,
-            packs: 1,
+            packs: missingPacks,
             recipeQuantity: requiredQuantity || null,
             recipeUnit,
             checked: false,
