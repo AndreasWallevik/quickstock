@@ -1804,6 +1804,7 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
   const count = countInStock(units);
   const availableCount = getAvailableStockUnitCount(product);
   const available = isStockItemAvailable(product);
+  const isPantryStaple = !shouldDepleteStockItemOnCook(product);
   const expired = units.filter((unit) => unit.state === "expired").length;
   const soon = soonCount(units, soonDays);
   const activeUnits = units.filter((unit) => unit.state !== "empty");
@@ -1844,7 +1845,11 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
   return (
     <div
       className={`rounded-2xl border p-4 shadow-sm transition hover:shadow-md ${
-        available ? "border-emerald-100 bg-white" : "border-slate-200 bg-slate-50/80 opacity-75"
+        product.freezer
+          ? "border-sky-200 bg-sky-50/70"
+          : available
+            ? "border-emerald-100 bg-white"
+            : "border-slate-200 bg-slate-50/80 opacity-75"
       }`}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -1887,6 +1892,16 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
             <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-800">{availableCount} in stock</span>
             {!available && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-slate-600">Out of stock</span>}
             <span className="rounded-full bg-stone-100 px-2 py-0.5">pack {product.packSize || 1}</span>
+            {product.freezer && (
+              <span className="rounded-full border border-sky-200 bg-sky-100 px-2 py-0.5 font-medium text-sky-800">
+              ❄️ Frozen
+            </span>
+            )}
+            {isPantryStaple && (
+              <span className="rounded-full border border-stone-200 bg-white/80 px-2 py-0.5 text-stone-600">
+              🏠 Pantry staple
+            </span>
+            )}
             {product.isBase && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">Basisvare</span>}
             {(product.labels || []).map((label) => (
               <span key={label} className="rounded-full bg-stone-100 px-2 py-0.5">
@@ -1971,6 +1986,21 @@ function ProductCard({ product, onPatch, onEdit, onDelete, onAddToShoppingList, 
         >
           Add to list
         </button>
+        
+        <button
+          type="button"
+          onClick={() => onPatch({ freezer: !product.freezer })}
+          className={`min-h-10 rounded-xl border px-3 py-1.5 text-sm ${
+            product.freezer
+              ? "border-sky-300 bg-sky-100 text-sky-800 hover:bg-sky-200"
+              : "border-slate-200 bg-white text-slate-700 hover:bg-sky-50"
+          }`}
+          aria-label={`${product.freezer ? "Unfreeze" : "Freeze"} ${product.name}`}
+          title={product.freezer ? "Mark as not frozen" : "Mark as frozen"}
+        >
+          ❄️
+        </button>
+        
         {manage && (
           <>
             <button onClick={onEdit} className="min-h-10 rounded-xl border px-3 py-1.5 text-sm hover:bg-slate-50">
@@ -1994,6 +2024,7 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
   const count = countInStock(units);
   const availableCount = getAvailableStockUnitCount(product);
   const available = isStockItemAvailable(product);
+  const isPantryStaple = !shouldDepleteStockItemOnCook(product);
   const expired = units.filter((unit) => unit.state === "expired").length;
   const soon = soonCount(units, soonDays);
   const activeUnits = units.filter((unit) => unit.state !== "empty");
@@ -2069,7 +2100,15 @@ function FridgeProductCard({ product, onPatch, onEdit, onDelete, onAddToShopping
         </h3>
         <div className="mt-2 flex min-h-6 flex-wrap justify-center gap-1.5 text-xs">
           {!available && <span className="rounded-full bg-slate-200 px-2.5 py-1 font-medium text-slate-600">Out of stock</span>}
-          {product.freezer && <span className="rounded-full bg-white/85 px-2.5 py-1 text-slate-700">Frozen</span>}
+          {product.freezer && (<span className="rounded-full border border-sky-200 bg-sky-100 px-2.5 py-1 font-medium text-sky-800">
+            ❄️ Frozen
+            </span>
+          )}
+          {isPantryStaple && (
+            <span className="rounded-full border border-stone-200 bg-white/80 px-2.5 py-1 text-stone-600">
+              🏠 Pantry staple
+            </span>
+          )}
           {product.isBase && <span className="rounded-full bg-white/85 px-2.5 py-1 text-slate-700">Basisvare</span>}
           {expired > 0 && (
             <span className="rounded-full bg-rose-100 px-2.5 py-1 font-medium text-rose-700">{expired} expired</span>
