@@ -1,83 +1,117 @@
-# QuickStock – Product Specification v2
+# QuickStock – Product Specification v3
 
 ## Vision
 
 QuickStock is a shared household inventory and meal planning app optimized for:
-- iPad kitchen usage
-- fast touch interaction
-- shared shopping workflows
-- reducing mental load around groceries and dinner planning
+
+* iPad kitchen usage
+* fast touch interaction
+* shared shopping workflows
+* freezer overview
+* reducing mental load around groceries and dinner planning
 
 Core concept:
-Track stock → plan dinners → auto-generate shopping needs.
+
+Track stock → plan dinners → see what is missing → generate shopping needs → cook and update stock.
+
+Important design principle:
+
+> QuickStock should reduce decisions, not create chores.
+
+The app should feel like a helpful household assistant, not an ERP system.
 
 ---
 
 # Tech Stack
 
 ## Frontend
-- React
-- Vite
-- TailwindCSS
+
+* React
+* Vite
+* TailwindCSS
 
 ## Backend
-- Firebase Hosting
-- Firestore
-- Firebase Auth (Google Sign-In)
+
+* Firebase Hosting
+* Firestore
+* Firebase Auth with Google Sign-In
 
 ## App Type
-PWA (Progressive Web App)
+
+PWA – Progressive Web App
 
 Supports:
-- iPhone
-- iPad
-- Android
-- Desktop
+
+* iPhone
+* iPad
+* Android
+* Desktop
 
 Installable via:
-"Add to Home Screen"
+
+```txt
+Add to Home Screen
+```
 
 ---
 
-# Existing Core Concepts
+# Current Product Direction
 
-Already implemented or prototyped:
-- Product cards
-- Emoji-based inventory
-- Stock states:
-  - full
-  - opened
-  - expired
-  - empty
-- Shelf life
-- Frozen items
-- Shopping list
-- Auto-add when empty
-- Pack size logic
-- Expiration tracking
-- Soon-to-expire notifications
+QuickStock has evolved from a simple stock tracker into a household meal-planning assistant.
+
+Primary value:
+
+* plan meals for the week
+* see what food exists in fridge/freezer/pantry
+* identify missing ingredients
+* generate shopping list items
+* reduce food-related decision fatigue
+* keep household coordination simple
+
+The app should prioritize real household use over perfect inventory precision.
 
 ---
 
-# Multi Household Architecture
+# Multi-Household Architecture
 
 IMPORTANT:
-All data belongs to a household.
 
-NOT directly to users.
+All data belongs to a household, not directly to users.
 
-This allows:
-- couples
-- families
-- roommates
-- maid/helper accounts
+This supports:
+
+* couples
+* families
+* roommates
+* helper accounts
+
+Firestore root:
+
+```txt
+households/{householdId}
+```
 
 ---
 
 # Authentication
 
-## Sign In
-- Google Sign-In only initially
+Initial authentication method:
+
+* Google Sign-In
+
+Current behavior:
+
+* browser login
+* Safari login
+* installed PWA login
+
+Temporary auth diagnostics may exist during testing and should eventually be hidden or removed.
+
+Recommended future cleanup:
+
+* keep useful auth error messages
+* remove always-visible debug UI
+* optionally keep diagnostics behind a hidden “Show debug” toggle
 
 ---
 
@@ -86,66 +120,86 @@ This allows:
 ## First Launch
 
 If user has no household:
-- Create household
-- Join household
+
+* create household
+* or join household with invite code
+
+## Household Invites
+
+Initial implementation:
+
+```txt
+HOUSE-7KQ2P
+```
+
+Flow:
+
+* user signs in
+* enters invite code
+* joins household
 
 ---
 
 # Household Roles
 
 ## admin
+
 Can:
-- manage members
-- manage recipes
-- manage stock
-- manage settings
+
+* manage members
+* manage recipes
+* manage stock
+* manage settings
 
 ## member
+
 Can:
-- manage stock
-- use meal planner
-- use shopping list
+
+* manage stock
+* use meal planner
+* use shopping list
 
 ## shopping-only
+
+Future role idea.
+
 Can:
-- view shopping list
-- check items
-- add shopping items
+
+* view shopping list
+* check items
+* add shopping items
 
 Cannot:
-- modify inventory
-- modify recipes
 
----
-
-# Household Invites
-
-Initial implementation:
-- invite code
-
-Example:
-HOUSE-7KQ2P
-
-Flow:
-- user signs in
-- enters invite code
-- joins household
+* modify inventory
+* modify recipes
 
 ---
 
 # Core Systems
 
-The app consists of separate but connected systems.
+The app consists of separate but connected systems:
+
+1. Inventory
+2. Shopping list
+3. Recipe management
+4. Weekly menu planning
+5. Cooking mode
 
 ---
 
 # 1. Inventory System
 
 Tracks:
-- stock
-- expiration
-- opened/full state
-- frozen state
+
+* stock items
+* individual stock units
+* opened/full/expired/empty state
+* shelf life
+* frozen state
+* pantry staple behavior
+* pack size
+* optional auto-add when empty
 
 ## Product Structure
 
@@ -158,44 +212,154 @@ stockItem = {
   packSize,
   shelfLifeDays,
   freezer,
-  autoAddWhenEmpty
+  autoAddWhenEmpty,
+  isBase,
+  depleteOnCook,
+  labels,
+  items
 }
 ```
+
+## Stock Unit Structure
+
+```js
+unit = {
+  id,
+  state,
+  addedAt,
+  expiresAt
+}
+```
+
+Supported states:
+
+```txt
+full
+opened
+expired
+empty
+```
+
+---
+
+# Frozen / Freezer UX
+
+Frozen/freezer overview is a core real-life use case.
+
+Users often plan meals based on what is already in the freezer.
+
+Implemented direction:
+
+* frozen items have clear visual badge
+* frozen items have subtle blue/frost styling
+* frozen toggle shortcut exists on inventory cards
+* freezer view/filter exists or is planned as a first-class inventory mode
+
+Important:
+
+Frozen state should be easy to change without opening a deep edit modal.
+
+---
+
+# Pantry Staple / Depletion Logic
+
+Some items should not be automatically consumed during cooking.
+
+Examples:
+
+* salt
+* pepper
+* oil
+* flour
+* rice/pasta if user wants manual handling
+* spices
+* other pantry staples
+
+Field:
+
+```js
+depleteOnCook
+```
+
+Current rule:
+
+```js
+shouldDepleteStockItemOnCook(stockItem)
+```
+
+Behavior:
+
+* if `depleteOnCook === false`, Done Cooking does not consume it
+* legacy `isBase` items default to not depleting
+* missing field defaults to normal depletion for non-base items
+
+UI:
+
+* inventory card can show subtle “Pantry staple” badge
 
 ---
 
 # 2. Shopping List System
 
 Supports:
-- manual items
-- auto-generated items
-- check/uncheck
-- multi-user collaboration
+
+* manual shopping items
+* stock item → shopping list
+* auto-generated missing ingredients
+* check/uncheck
+* bought items added back to inventory
+* multi-user household collaboration
+
+## Shopping Item Structure
+
+Shopping items may include:
+
+```js
+shoppingItem = {
+  id,
+  name,
+  quantity,
+  unit,
+  packs,
+  checked,
+  sourceType,
+  stockItemId,
+  sourceStockItemId,
+  ingredientStockItemId,
+  recipeId,
+  weekId,
+  dayKey,
+  autoGenerated
+}
+```
+
+Important distinction:
+
+* `recipeQuantity` / `recipeUnit` are for display/planning
+* `packs` is for shopping/restocking
+* stock units are individual inventory units
 
 ---
 
 # 3. Recipe Management System
 
-IMPORTANT:
 Recipe management is separate from weekly planning.
 
 Recipes are reusable objects.
 
----
-
-# Recipe Goals
+## Recipe Goals
 
 Recipes should support:
-- dinner planning
-- ingredient calculations
-- cooking mode
-- shopping generation
 
-NOT full food-blog complexity.
+* dinner planning
+* ingredient display
+* inventory matching
+* shopping generation
+* cooking mode
 
----
+Recipes should NOT become food-blog complexity.
 
-# Recipe Structure
+## Recipe Structure
 
 ```js
 recipe = {
@@ -208,14 +372,9 @@ recipe = {
 }
 ```
 
----
+## Ingredient Structure
 
-# Ingredient Structure
-
-IMPORTANT:
 Recipe ingredients should preferably reference real stock items.
-
-Main approach:
 
 ```js
 ingredient = {
@@ -232,9 +391,15 @@ Example:
 {
   stockItemId: "abc123",
   nameSnapshot: "Kjøttdeig",
-  quantity: 400,
+  quantity: "400",
   unit: "g"
 }
+```
+
+`quantity` may be a string to support ranges like:
+
+```txt
+400-500 g
 ```
 
 ---
@@ -242,189 +407,211 @@ Example:
 # Why Use stockItemId
 
 Benefits:
-- reliable stock calculations
-- avoids fuzzy matching
-- prevents duplicates
-- cleaner shopping generation
+
+* reliable stock calculations
+* avoids fuzzy matching
+* prevents duplicates
+* cleaner shopping generation
+* stable identity from recipe → weekly plan → shopping list → stock
 
 ---
 
 # Fallback / Unlinked Ingredients
 
-Recipe ingredients MAY temporarily exist without stockItemId.
+Recipe ingredients may temporarily exist without `stockItemId`.
 
 This allows:
-- quick recipe creation
-- importing/pasting ingredients
-- incomplete recipes
+
+* quick recipe creation
+* incomplete recipes
+* pasted ingredients
+* later cleanup/review
 
 Unlinked ingredients:
-- can still appear on shopping list
-- but inventory calculations may not work fully
+
+* can still appear on shopping list
+* may require review
+* cannot fully support inventory readiness calculations
 
 ---
 
 # Recipe Creation UX
 
-Recipe creation must be FAST.
+Recipe creation must be fast.
 
 Avoid:
-- huge forms
-- tedious ingredient setup
+
+* huge forms
+* tedious setup
+* leaving the recipe flow to create stock items
+
+Preferred behavior:
+
+* search existing stock items directly from ingredient row
+* selecting a stock item fills the visible ingredient name
+* create new stock item from ingredient row
+* hide technical linking details from normal users
 
 ---
 
-# Preferred Recipe Creation Flow
+# Unit / Quantity Handling
 
-## Quick Ingredient Paste
+IMPORTANT:
 
-User can paste:
+Do not over-engineer units initially.
+
+The app intentionally does not attempt full gram/ml inventory math.
+
+## Current MVP Rule
+
+### pcs
+
+`pcs` is treated as individual countable units.
+
+Example:
 
 ```txt
-400 g kjøttdeig
-1 pk tortilla
-1 glass salsa
+Recipe needs 2 eggs
+Egg pack size = 12
+Inventory empty
+Shopping needs 1 pack
+After buying: stock +12 units
+Done Cooking consumes 2 units
 ```
 
-App attempts:
-- quantity parsing
-- unit parsing
-- stock item matching
+### Non-pcs units
+
+Examples:
+
+```txt
+g
+kg
+ml
+l
+tbsp
+pack
+400-500 g
+```
+
+For non-pcs units:
+
+* quantity is mostly display/planning
+* if a linked stock item exists and has at least one available unit, it is considered available
+* if none exist, shopping should add one pack/item
+* Done Cooking normally consumes one stock unit unless `depleteOnCook === false`
+
+This is intentional.
+
+QuickStock should not become a precise weight-based inventory system.
 
 ---
 
-# Ingredient Matching Flow
-
-For each ingredient:
-
-1. Try matching existing stock item
-2. If no match:
-   - show "Create item"
-   - or leave unlinked
-
----
-
-# IMPORTANT UX FEATURE
-
-Recipe creation view should support:
-
-## "Create Item"
-
-directly inside ingredient editor.
-
-This avoids:
-- leaving recipe flow
-- annoying setup loops
-
----
-
-# Weekly Dinner Planner
+# 4. Weekly Dinner Planner
 
 Separate system from recipes.
 
-Uses:
-- reusable recipes
+Uses reusable recipes.
 
----
-
-# Weekly Planner Structure
+## Weekly Plan Structure
 
 ```js
 weeklyPlan = {
-  monday: recipeId,
-  tuesday: recipeId,
-  ...
+  id,
+  weekId,
+  weekStartDate,
+  days: {
+    monday: {
+      recipeId,
+      notes,
+      consumedAt,
+      consumptionUndo
+    }
+  }
 }
 ```
 
----
-
-# Weekly Planner Goals
+## Weekly Planner Goals
 
 Selecting recipes should:
-- calculate missing ingredients
-- compare against inventory
-- auto-generate shopping items
+
+* show planned dinners
+* calculate readiness
+* compare against inventory
+* generate missing shopping items
+* support Done Cooking / Undo Cooking
 
 ---
 
-# Shopping Calculation Logic
+# Recipe Readiness
 
-Core formula:
+Implemented / current direction:
+
+Each planned meal can show:
 
 ```txt
-required ingredients
--
-current inventory
-=
-missing items
+Ready
+Missing X items
+Needs review
+Completed
 ```
 
----
+Rules:
 
-# Example
+* linked ingredients with available stock → ready
+* linked ingredients missing stock → missing
+* unlinked ingredients or missing stock references → needs review
+* completed meals count as ready
 
-## Planned Recipes
-
-Tacos:
-- 400g minced meat
-- 1 tortilla pack
-
-Pasta:
-- 500g pasta
-- 1 tomato sauce
-
----
-
-## Current Inventory
+Weekly progress can show:
 
 ```txt
-200g minced meat
-500g pasta
+4/5 meals ready
+80% ready
 ```
+
+Only planned meals count.
 
 ---
 
-## Generated Shopping
+# Add Missing Items
+
+Purpose:
+
+Generate shopping list items for missing ingredients in the current weekly plan.
+
+Important identity chain:
 
 ```txt
-200g minced meat
-1 tortilla pack
-1 tomato sauce
+Recipe ingredient
+→ stockItemId
+→ weekly plan
+→ shopping item
+→ bought
+→ stock item
 ```
 
----
+Generated shopping items should avoid duplicates.
 
-# Unit Handling
-
-IMPORTANT:
-Do NOT over-engineer units initially.
-
-MVP support:
-- pcs
-- g
-- kg
-- ml
-- l
-- pack
-
-Only calculate automatically when units match.
-
-Otherwise:
-- mark as "needs review"
+Clicking Add Missing multiple times should be idempotent.
 
 ---
 
 # Cooking Mode
 
-Suggested feature from household feedback.
+Recipes support step-by-step cooking mode.
 
-Recipes should support:
-- step-by-step cooking mode
+Kitchen/iPad optimized.
 
----
+Features:
 
-# Recipe Steps Structure
+* large readable text
+* one step at a time
+* next/previous buttons
+* Start Cooking from recipe / weekly menu
+* Done Cooking
+* Undo Cooking
+
+## Recipe Steps Structure
 
 ```js
 steps: [
@@ -434,21 +621,52 @@ steps: [
 ]
 ```
 
+## Done Cooking
+
+Done Cooking should:
+
+* mark the meal as completed
+* consume linked ingredients from stock according to current rules
+* skip pantry staples where `depleteOnCook === false`
+* store undo information so cooking can be undone
+
 ---
 
-# Cooking Mode UX
+# Freestyle Cooking – Future Idea
 
-Kitchen/iPad optimized.
+Some meals are flexible.
 
-Features:
-- large readable text
-- one step at a time
-- next/previous buttons
+Example:
 
-Future ideas:
-- timers
-- voice navigation
-- hands-free mode
+```txt
+Noodles teriyaki + whatever vegetables are in the fridge
+Wok-style dinner
+Use what we have
+```
+
+Future feature idea:
+
+```txt
+Freestyle Cooking Mode
+```
+
+Concept:
+
+* choose a base recipe or start freestyle
+* select extra inventory items used in this meal
+* do not modify the original recipe
+* optionally consume selected extras when Done Cooking
+
+Important:
+
+This should NOT be implemented as “edit recipe during cooking”.
+
+It should be one-time extras for this cooking session.
+
+MVP workaround:
+
+* use a base recipe
+* manually remove extra used items from inventory
 
 ---
 
@@ -456,47 +674,37 @@ Future ideas:
 
 ## households
 
-```js
+```txt
 households/{householdId}
 ```
 
----
-
 ## members
 
-```js
+```txt
 households/{householdId}/members/{userId}
 ```
 
----
-
 ## stockItems
 
-```js
+```txt
 households/{householdId}/stockItems/{itemId}
 ```
 
----
-
 ## shoppingList
 
-```js
+```txt
 households/{householdId}/shoppingList/{itemId}
 ```
 
----
-
 ## recipes
 
-```js
+```txt
 households/{householdId}/recipes/{recipeId}
 ```
 
----
-
 ## weeklyPlans
 
-```js
+```txt
 households/{householdId}/weeklyPlans/{weekId}
 ```
 
@@ -504,24 +712,27 @@ households/{householdId}/weeklyPlans/{weekId}
 
 # Security Rules
 
-Firestore rules MUST ensure:
-- user belongs to household
-- role permissions enforced
+Firestore rules must ensure:
 
-Users must NEVER access other households.
+* user belongs to household
+* household role permissions are enforced
+* users cannot access other households
 
 ---
 
 # PWA Requirements
 
 App should support:
-- install to home screen
-- app icon
-- splash screen
-- offline cache basics
 
-Use:
-- vite-plugin-pwa
+* install to home screen
+* app icon
+* splash screen
+* standalone mode
+* basic offline cache
+
+Uses:
+
+* vite-plugin-pwa
 
 ---
 
@@ -530,130 +741,195 @@ Use:
 Free tier should be enough for MVP.
 
 Expected usage:
-- very low user count
-- low Firestore load
-- no image uploads initially
+
+* very low user count
+* low Firestore load
+* no image uploads initially
 
 ---
 
-# IMPORTANT NON-MVP FEATURES
+# Non-MVP Features To Avoid Initially
 
-Avoid implementing initially:
-- AI ingredient recognition
-- OCR receipts
-- barcode sync
-- recipe APIs
-- Cloud Functions
-- nutrition tracking
+Avoid implementing too early:
+
+* AI ingredient recognition
+* OCR receipts
+* barcode sync
+* recipe APIs
+* Cloud Functions
+* nutrition tracking
+* precise gram/ml inventory accounting
+* automatic unit conversion
+* full ERP-style stock management
 
 ---
 
 # Future Features
 
 Potential future additions:
-- barcode scanning
-- Open Food Facts integration
-- expiration predictions
-- recipe suggestions
-- low stock warnings
-- voice input
-- analytics
-- recurring purchases
-- shopping mode sorting
-- AI meal planning
+
+* global search across inventory and recipes
+* weekly missing overview
+* freezer-first planning
+* recipe suggestions based on current stock
+* weekly plan generator
+* leftovers flow
+* barcode scanning
+* Open Food Facts integration
+* low stock warnings
+* voice input
+* timers
+* hands-free cooking mode
+* recurring purchases
+* shopping mode sorting
+* AI meal planning
+
+---
+
+# Future Slice: Weekly Missing Overview
+
+Goal:
+
+Show a single overview of what is missing for the current week.
+
+Example:
+
+```txt
+Missing this week:
+- Avocado
+- Rømme
+- Passata
+- Parmesan
+```
+
+or grouped by day:
+
+```txt
+Monday – Tacos
+- Avocado
+- Rømme
+
+Wednesday – Pasta
+- Passata
+```
+
+This is useful if per-day readiness is not enough.
+
+Not critical while Add Missing Items exists.
+
+---
+
+# Future Slice: Global Search
+
+Goal:
+
+Search inventory and recipes from one place.
+
+MVP behavior:
+
+* search stock item names
+* search recipe names
+* show results grouped by Inventory and Recipes
+* clicking result opens relevant area
+
+Avoid initial complexity:
+
+* fuzzy search
+* ingredient search
+* keyboard shortcuts
+* advanced filters
 
 ---
 
 # Future Slice: Recipe Suggestions
 
-## Goal
+Goal:
 
 Suggest recipes based on current household stock items.
 
 Recipe suggestions are inspiration only.
 
-They are NOT the source of truth for household recipes, inventory, shopping,
-or weekly plans.
+They are not the source of truth for recipes, inventory, shopping, or weekly plans.
+
+MVP behavior:
+
+* use local recipes first
+* score recipes by available ingredients
+* show suggestions such as:
+
+  * Taco: 8/10 ingredients available
+  * Pasta: 6/8 ingredients available
+
+External providers may be considered later.
+
+Potential providers:
+
+* Spoonacular
+* TheMealDB
+
+Imported recipes must be converted into the local recipe format and manually reviewed.
 
 ---
 
-## MVP Behavior
+# Development Philosophy
 
-Use existing stock item names as ingredient search terms.
+Priorities:
 
-The app should:
-- show suggested recipes
-- allow saving/importing one suggestion as a local recipe
-- never auto-add suggested recipes to the weekly menu without user confirmation
+1. Correctness
+2. Simplicity
+3. UX polish
 
----
+Avoid:
 
-## Potential Providers
+* over-automation
+* invisible logic
+* excessive inventory micromanagement
+* features that create more maintenance work than they remove
 
-Potential external providers:
-- Spoonacular for ingredient-based recipe search
-- TheMealDB for random/inspiration recipe of the day
-
----
-
-## Import Rules
-
-Imported recipes MUST be converted into the local recipe format:
-
-```js
-recipe = {
-  id,
-  name,
-  emoji,
-  servings,
-  ingredients: [],
-  steps: []
-}
-```
-
-Ingredients from external APIs should be reviewed and mapped to stock items
-manually.
-
-External API ingredients should not be trusted as clean inventory references.
-
-Imported ingredients should use:
-
-```js
-ingredient = {
-  stockItemId,
-  nameSnapshot,
-  quantity,
-  unit
-}
-```
-
-If no stock item match exists, the ingredient may remain unlinked until the
-user reviews it.
+Whenever a feature adds chores for the user, reconsider the design.
 
 ---
 
 # Suggested Development Order
 
-## Phase 1
-- Google auth
-- household system
-- inventory system
-- shopping list
+## Phase 1 – Foundation
 
-## Phase 2
-- recipe management
-- ingredient linking
-- create item from recipe
+* Google auth
+* household system
+* inventory system
+* shopping list
+* PWA install
 
-## Phase 3
-- weekly dinner planner
-- automatic shopping generation
+## Phase 2 – Meal Planning Core
 
-## Phase 4
-- cooking mode
-- recipe steps
-- polish
+* recipe management
+* ingredient linking
+* create stock item from recipe
+* weekly menu
+* add missing items
 
-## Phase 5
-- barcode scanning
-- external integrations
+## Phase 3 – Cooking / Stock Reality
+
+* recipe readiness
+* weekly progress
+* Done Cooking
+* Undo Cooking
+* correct pcs vs non-pcs behavior
+* pantry staple depletion rules
+
+## Phase 4 – Practical Household UX
+
+* frozen visual UX
+* freezer view/filter
+* grouped inventory polish
+* auth cleanup
+* real household testing
+
+## Phase 5 – Smarter Assistance
+
+* weekly missing overview
+* global search
+* recipe suggestions
+* weekly plan generator
+* leftovers
+* freestyle cooking
