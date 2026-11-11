@@ -20,6 +20,9 @@ QuickStock is a shared household inventory and meal planning app focused on:
 
 ## Features
 
+- Freezer-first home with multiple household freezers and ordered compartments
+- Search/filter frozen food, quick portion add/use, optional freezing dates
+- Voice command entry with review before saving (where browser speech recognition is available)
 - Shared household inventory
 - Emoji-based stock tracking
 - Shopping lists
@@ -27,6 +30,12 @@ QuickStock is a shared household inventory and meal planning app focused on:
 - Recipe management
 - Weekly dinner planner
 - Auto-generated shopping suggestions
+
+### Freezer data model
+
+Freezers are stored at `households/{householdId}/freezers/{freezerId}`. Each freezer document has an ordered `compartments` array. Frozen stock still uses the existing `stockItems` collection; individual `items[]` units can now carry `freezerId`, `compartmentId`, and optional `frozenAt` (`YYYY-MM-DD`). Existing frozen units without these fields appear as **Unassigned freezer items** and can be moved from the freezer screen. New frozen units do not receive an inferred expiry date. A compartment or freezer must be emptied before it can be removed, so moving locations never deletes food.
+
+The freezer screen is the default. Recipes remain a primary view; general inventory, weekly planning, shopping, and management remain available under **More**. Voice updates use the browser's speech recognition when available, with typed commands as a fallback. Each update requires confirmation.
 
 ---
 
@@ -48,6 +57,12 @@ Build production bundle:
 
 ```bash
 npm run build
+```
+
+Run inventory model tests:
+
+```bash
+npm run test
 ```
 
 ### Starter pantry vs demo seed data

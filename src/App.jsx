@@ -25,6 +25,7 @@ import {
 import { auth, db, firebaseReady, googleProvider } from "./firebase";
 import starterStockItems from "../data/stockItems.seed.json";
 import demoRecipes from "../data/recipes.seed.json";
+import FreezerHome from "./freezer/FreezerHome";
 
 const DAY = 24 * 60 * 60 * 1000;
 const STOCK_STATES = ["full", "opened", "empty", "expired"];
@@ -39,12 +40,19 @@ const WEEK_DAYS = [
   "sunday",
 ];
 const MAIN_VIEWS = [
+  { id: "freezer", label: "Freezer", icon: "🧊" },
   { id: "weekly", label: "Weekly Menu", icon: "🍽" },
   { id: "shopping", label: "Shopping List", icon: "🛒" },
   { id: "inventory", label: "Inventory", icon: "🧊" },
   { id: "recipes", label: "Recipes", icon: "📖" },
   { id: "overview", label: "Management", icon: "⚙️" },
 ];
+const PRIMARY_VIEWS = [
+  { id: "freezer", label: "🧊 Freezer" },
+  { id: "recipes", label: "📖 Recipes" },
+  { id: "more", label: "More" },
+];
+const SECONDARY_VIEWS = MAIN_VIEWS.filter((view) => !["freezer", "recipes"].includes(view.id));
 const INVENTORY_MODES = [
   { id: "fridge", label: "Fridge View" },
   { id: "freezer", label: "Freezer View" },
@@ -792,15 +800,18 @@ function useHouseholds(user) {
 function useStockItems(householdId) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!householdId || !db) {
       setItems([]);
       setLoading(false);
+      setError("");
       return undefined;
     }
 
     setLoading(true);
+    setError("");
     const itemsQuery = query(
       collection(db, "households", householdId, "stockItems"),
       orderBy("name")
@@ -811,15 +822,17 @@ function useStockItems(householdId) {
       (snapshot) => {
         setItems(snapshot.docs.map((itemDoc) => ({ id: itemDoc.id, ...itemDoc.data() })));
         setLoading(false);
+        setError("");
       },
-      () => {
+      (snapshotError) => {
         setItems([]);
         setLoading(false);
+        setError(snapshotError.message || "Could not load inventory.");
       }
     );
   }, [householdId]);
 
-  return { items, loading };
+  return { items, loading, error };
 }
 
 function useShoppingList(householdId) {
@@ -3574,14 +3587,14 @@ function WeeklyMenu({
 }
 
 function Inventory({ householdId }) {
-  const { items, loading } = useStockItems(householdId);
+  const { items, loading, error: stockError } = useStockItems(householdId);
   const { items: shoppingItems, loading: shoppingLoading } = useShoppingList(householdId);
   const { recipes } = useRecipes(householdId);
   const today = new Date();
   const todayWeekId = getIsoWeekId(today);
   const todayDay = getWeekDayKey(today);
   const { plan: todayPlan } = useWeeklyPlan(householdId, todayWeekId);
-  const [mainView, setMainView] = useState("weekly");
+  const [mainView, setMainView] = useState("freezer");
   const [inventoryMode, setInventoryMode] = useState("fridge");
   const [groupBy, setGroupBy] = useState("None");
   const [soonDays, setSoonDays] = useState(2);
@@ -3596,7 +3609,7 @@ function Inventory({ householdId }) {
   const [openRecipe, setOpenRecipe] = useState(null);
 
   useEffect(() => {
-    setMainView("weekly");
+    setMainView("freezer");
     setOpenRecipe(null);
   }, [householdId]);
 
@@ -3681,7 +3694,7 @@ function Inventory({ householdId }) {
     [inventoryProducts, groupBy]
   );
 
-  const currentView = MAIN_VIEWS.find((view) => view.id === mainView) || MAIN_VIEWS[4];
+  const currentView = MAIN_VIEWS.find((view) => view.id === mainView) || MAIN_VIEWS[0];
   const showManagementControls = mainView === "overview";
   const showInventoryViewControls = mainView === "inventory";
 
@@ -4136,14 +4149,23 @@ function Inventory({ householdId }) {
   return (
     <>
       <div className="mb-4">
-        <ViewSelector options={MAIN_VIEWS} value={mainView} onChange={setMainView} />
+        <ViewSelector
+          options={PRIMARY_VIEWS}
+          value={["freezer", "recipes"].includes(mainView) ? mainView : "more"}
+          onChange={(view) => setMainView(view === "more" ? "inventory" : view)}
+        />
       </div>
 
-      {renderControls()}
-      <div className="mb-6">
+      {!["freezer", "recipes"].includes(mainView) && <div className="mb-4">
+        <ViewSelector options={SECONDARY_VIEWS} value={mainView} onChange={setMainView} />
+      </div>}
+
+      {mainView !== "freezer" && renderControls()}
+      {mainView !== "freezer" && <div className="mb-6">
         <StatsStrip stats={statsStripItems} onStatClick={handleStatClick} />
-      </div>
+      </div>}
 
+      {mainView === "freezer" && <FreezerHome key={householdId} householdId={householdId} stockItems={items} stockLoading={loading} stockError={stockError} />}
       {mainView === "overview" && renderOverview()}
       {mainView === "inventory" && renderInventoryView()}
       {mainView === "shopping" && (

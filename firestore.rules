@@ -77,6 +77,11 @@ service cloud.firestore {
         allow create, update, delete: if canManageStock(householdId);
       }
 
+      match /freezers/{freezerId} {
+        allow read: if isHouseholdMember(householdId);
+        allow create, update, delete: if canManageStock(householdId);
+      }
+
       match /shoppingList/{itemId} {
         allow read: if isHouseholdMember(householdId);
         allow create, update, delete: if isHouseholdMember(householdId);
