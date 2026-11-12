@@ -6,10 +6,11 @@ import {
   filterFreezerEntries,
   locationOptions,
   newId,
-  parseVoiceCommand,
   sortedFreezers,
   UNASSIGNED_ID,
 } from "./freezerModel";
+import VoiceInventoryDialog from "./VoiceInventoryDialog";
+import { startBrowserTranscription } from "./browserTranscription";
 import {
   addFrozenStock,
   changeFrozenStock,
@@ -24,17 +25,28 @@ import {
 const emptyDraft = { name: "", count: 1, locationKey: "", frozenAt: "" };
 
 function useFreezers(householdId) {
-  const [state, setState] = useState({ freezers: [], loading: true, error: "" });
+  const [state, setState] = useState({ freezers: [], loading: true, error: "", errorCode: "" });
   useEffect(() => {
     if (!householdId) return undefined;
     return onSnapshot(
       collection(db, "households", householdId, "freezers"),
-      (snapshot) => setState({
-        freezers: sortedFreezers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-        loading: false,
-        error: "",
-      }),
-      (error) => setState({ freezers: [], loading: false, error: error.message || "Could not load freezers." })
+      (snapshot) => {
+        console.info("[QuickStock freezer] Freezers loaded", { count: snapshot.size });
+        setState({
+          freezers: sortedFreezers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
+          loading: false,
+          error: "",
+          errorCode: "",
+        });
+      },
+      (error) => {
+        console.error("[QuickStock freezer] Freezer subscription failed", { code: error.code, message: error.message });
+        setState({
+          freezers: [], loading: false,
+          error: error.message || "Could not load freezers.",
+          errorCode: error.code || "",
+        });
+      }
     );
   }, [householdId]);
   return state;
@@ -56,7 +68,7 @@ function LocationSelect({ value, onChange, locations, className = "" }) {
 }
 
 export default function FreezerHome({ householdId, stockItems, stockLoading, stockError = "" }) {
-  const { freezers, loading: freezersLoading, error: loadError } = useFreezers(householdId);
+  const { freezers, loading: freezersLoading, error: loadError, errorCode } = useFreezers(householdId);
   const entries = useMemo(() => buildFreezerEntries(stockItems, freezers), [stockItems, freezers]);
   const locations = useMemo(() => locationOptions(freezers), [freezers]);
   const [search, setSearch] = useState("");
@@ -65,10 +77,12 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
   const [showAdd, setShowAdd] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
   const [showLocations, setShowLocations] = useState(false);
+  const [showAddFreezer, setShowAddFreezer] = useState(false);
+  const [freezerName, setFreezerName] = useState("");
+  const [addFreezerError, setAddFreezerError] = useState("");
   const [draft, setDraft] = useState(emptyDraft);
   const [voiceText, setVoiceText] = useState("");
-  const [voiceCommand, setVoiceCommand] = useState(null);
-  const [voiceLocationKey, setVoiceLocationKey] = useState("");
+  const [voiceError, setVoiceError] = useState("");
   const [listening, setListening] = useState(false);
   const [editingEntry, setEditingEntry] = useState("");
   const [editLocationKey, setEditLocationKey] = useState("");
@@ -77,9 +91,10 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
   const [busyEntry, setBusyEntry] = useState("");
   const [message, setMessage] = useState("");
   const recognitionRef = useRef(null);
+  const speechAttemptRef = useRef(0);
 
   useEffect(() => {
-    return () => recognitionRef.current?.abort();
+    return () => recognitionRef.current?.cancel();
   }, []);
 
   const visibleEntries = useMemo(() => filterFreezerEntries(entries, {
@@ -136,12 +151,58 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
     }
   };
 
-  const addFreezer = async () => {
-    const name = window.prompt("Name this freezer (for example, Kitchen freezer)")?.trim();
-    if (!name) return;
-    const nextPosition = Math.max(-1, ...freezers.map((freezer) => Number(freezer.position) || 0)) + 1;
-    await run(() => createFreezer(db, householdId, name, nextPosition), `${name} added.`);
+  const openAddFreezer = () => {
+    console.info("[QuickStock freezer] Add freezer clicked", { existingFreezers: freezers.length });
+    setAddFreezerError("");
+    setShowAddFreezer(true);
   };
+
+  const addFreezer = async (event) => {
+    event.preventDefault();
+    const name = freezerName.trim();
+    if (!name) {
+      console.warn("[QuickStock freezer] Add freezer stopped: name is empty");
+      setAddFreezerError("Enter a name for the freezer.");
+      return;
+    }
+    if (!householdId) {
+      console.error("[QuickStock freezer] Add freezer stopped: no household selected");
+      setAddFreezerError("No household is selected. Reload the page and try again.");
+      return;
+    }
+    const nextPosition = Math.max(-1, ...freezers.map((freezer) => Number(freezer.position) || 0)) + 1;
+    console.info("[QuickStock freezer] Creating freezer", { position: nextPosition });
+    setBusy(true);
+    setMessage("");
+    setAddFreezerError("");
+    try {
+      const result = await createFreezer(db, householdId, name, nextPosition);
+      console.info("[QuickStock freezer] Freezer created", { id: result.id });
+      setFreezerName("");
+      setShowAddFreezer(false);
+      setMessage(`${name} added.`);
+    } catch (error) {
+      console.error("[QuickStock freezer] Create freezer failed", { code: error.code, message: error.message });
+      setAddFreezerError(error.message || "Could not add the freezer. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addFreezerForm = showAddFreezer && (
+    <form onSubmit={addFreezer} className="mt-4 flex flex-col gap-2 rounded-xl bg-slate-50 p-3 sm:max-w-md">
+      <label htmlFor="new-freezer-name" className="text-sm font-medium text-slate-800">Freezer name</label>
+      <input id="new-freezer-name" type="text" value={freezerName} onChange={(event) => setFreezerName(event.target.value)}
+        placeholder="For example, Kitchen freezer" autoFocus maxLength={80}
+        className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm" />
+      {addFreezerError && <p role="alert" className="text-sm text-rose-700">{addFreezerError}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Adding…" : "Save freezer"}</button>
+        <button type="button" disabled={busy} onClick={() => { console.info("[QuickStock freezer] Add freezer canceled"); setShowAddFreezer(false); setFreezerName(""); setAddFreezerError(""); }}
+          className="min-h-11 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">Cancel</button>
+      </div>
+    </form>
+  );
 
   const rename = async (freezer) => {
     const name = window.prompt("Freezer name", freezer.name)?.trim();
@@ -206,58 +267,30 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
 
   const beginVoice = () => {
     setShowVoice(true);
-    setVoiceCommand(null);
     setVoiceText("");
-    setVoiceLocationKey(defaultLocationKey);
+    setVoiceError("");
     setMessage("");
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setMessage("Voice capture is unavailable in this browser. Type a command below instead.");
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = navigator.language || "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setVoiceText(transcript);
-      setVoiceCommand(parseVoiceCommand(transcript));
-    };
-    recognition.onerror = (event) => setMessage(`Voice capture: ${event.error}. You can type the command instead.`);
-    recognition.onend = () => setListening(false);
-    recognitionRef.current = recognition;
+    recognitionRef.current?.cancel();
+    const attempt = ++speechAttemptRef.current;
     try {
-      recognition.start();
+      recognitionRef.current = startBrowserTranscription({
+        onTranscript: (text) => { if (attempt === speechAttemptRef.current) setVoiceText(text); },
+        onError: (error) => { if (attempt === speechAttemptRef.current) setVoiceError(error); },
+        onEnd: () => { if (attempt === speechAttemptRef.current) setListening(false); },
+      });
       setListening(true);
-    } catch {
-      setMessage("Could not start voice capture. You can type the command instead.");
+    } catch (error) {
+      setVoiceError(error.message || "Could not start voice capture. Type the update instead.");
+      setListening(false);
     }
   };
 
-  const confirmVoice = async () => {
-    const command = voiceCommand;
-    const location = selectedLocation(voiceLocationKey || defaultLocationKey);
-    if (!command || !location) return;
-    if (command.action === "add") {
-      const saved = await run(() => addFrozenStock(db, householdId, stockItems, {
-        name: command.name, count: command.count, location, frozenAt: "",
-      }), `${command.count} ${command.name} added.`);
-      if (saved) setShowVoice(false);
-      return;
-    }
-    const match = entries.find((entry) =>
-      entry.freezerId === location.freezerId &&
-      entry.compartmentId === location.compartmentId &&
-      entry.stockItem.name.toLocaleLowerCase("nb") === command.name.toLocaleLowerCase("nb")
-    );
-    if (!match || match.count < command.count) {
-      setMessage(`Could not find ${command.count} ${command.name} in ${location.label}. Select the right compartment or edit the command.`);
-      return;
-    }
-    const saved = await run(() => changeFrozenStock(db, householdId, match, -command.count),
-      `${command.count} ${command.name} removed.`);
-    if (saved) setShowVoice(false);
+  const cancelVoice = () => {
+    speechAttemptRef.current += 1;
+    recognitionRef.current?.cancel();
+    recognitionRef.current = null;
+    setListening(false);
+    setShowVoice(false);
   };
 
   const saveEntryDetails = async (entry) => {
@@ -275,33 +308,41 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-200">Household freezer</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">What’s in the freezer?</h1>
             <p className="mt-2 text-sm text-slate-300">
-              {stockLoading || freezersLoading ? "Loading frozen food…" : `${totalUnits} portions across ${freezers.length} freezer${freezers.length === 1 ? "" : "s"}`}
+              {stockLoading || freezersLoading ? "Loading frozen food…" : loadError ? "Freezer locations unavailable" : `${totalUnits} portions across ${freezers.length} freezer${freezers.length === 1 ? "" : "s"}`}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {!loadError && <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={beginVoice} disabled={!locations.length}
+              className="min-h-12 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 shadow-sm disabled:opacity-40">
+              🎙 Speak inventory
+            </button>
             <button type="button" onClick={() => { setDraft({ ...emptyDraft, locationKey: defaultLocationKey }); setShowAdd(true); }}
-              disabled={!locations.length} className="min-h-12 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 disabled:opacity-40">
+              disabled={!locations.length} className="min-h-12 rounded-xl border border-sky-300 bg-sky-500 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">
               + Add food
             </button>
-            <button type="button" onClick={beginVoice} disabled={!locations.length}
-              className="min-h-12 rounded-xl border border-sky-300 bg-sky-500 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">
-              🎙 Voice update
-            </button>
-          </div>
+          </div>}
         </div>
       </section>
 
-      {(loadError || stockError || message) && <p role="status" className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm text-slate-800">{loadError || stockError || message}</p>}
+      {loadError && <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
+        <h2 className="font-semibold">Freezer locations could not be loaded</h2>
+        <p className="mt-1">{errorCode === "permission-denied"
+          ? "Your account can open household stock, but access to freezer locations is blocked. The app owner needs to update the Firestore permissions for freezers."
+          : loadError}</p>
+        <button type="button" onClick={() => window.location.reload()} className="mt-3 min-h-10 rounded-xl border border-amber-300 bg-white px-3 font-medium">Reload after access is fixed</button>
+      </section>}
+      {!loadError && (stockError || message) && <p role="status" className="rounded-xl border border-sky-100 bg-sky-50 p-3 text-sm text-slate-800">{stockError || message}</p>}
 
-      {freezers.length === 0 && !freezersLoading && (
+      {!loadError && freezers.length === 0 && !freezersLoading && (
         <section className="rounded-2xl border border-sky-100 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Add your first freezer</h2>
           <p className="mt-1 text-sm text-slate-600">Give it a name. We’ll add one compartment to start.</p>
-          <button type="button" onClick={addFreezer} disabled={busy} className="mt-4 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">+ Add freezer</button>
+          {!showAddFreezer && <button type="button" onClick={openAddFreezer} disabled={busy} className="mt-4 min-h-11 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">+ Add freezer</button>}
+          {addFreezerForm}
         </section>
       )}
 
-      {freezers.length > 0 && (
+      {!loadError && freezers.length > 0 && (
         <section aria-label="Freezers" className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold text-slate-950">Locations</h2>
@@ -312,12 +353,17 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {freezers.map((freezer) => {
               const freezerCount = entries.filter((entry) => entry.freezerId === freezer.id).reduce((sum, entry) => sum + entry.count, 0);
+              const isSelected = freezerFilter === freezer.id;
               return (
-                <article key={freezer.id} className="rounded-2xl border border-sky-100 bg-white p-4 shadow-sm">
+                <article key={freezer.id} className={`rounded-2xl border p-4 shadow-sm ${isSelected ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-200" : "border-sky-100 bg-white"}`}>
                   <button type="button" onClick={() => { setFreezerFilter(freezerFilter === freezer.id ? "all" : freezer.id); setCompartmentFilter("all"); }}
+                    aria-pressed={isSelected}
                     className="flex w-full items-center justify-between gap-2 text-left">
                     <span className="font-semibold text-slate-950">🧊 {freezer.name}</span>
-                    <span className="rounded-full bg-sky-50 px-2 py-1 text-sm font-bold text-sky-800">{freezerCount}</span>
+                    <span className="flex items-center gap-2">
+                      {isSelected && <span className="text-xs font-semibold text-emerald-800">Selected</span>}
+                      <span className="rounded-full bg-sky-50 px-2 py-1 text-sm font-bold text-sky-800">{freezerCount}</span>
+                    </span>
                   </button>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {(freezer.compartments || []).map((compartment) => {
@@ -355,13 +401,17 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
                 </article>
               );
             })}
-            {unassignedCount > 0 && <button type="button" onClick={() => { setFreezerFilter(UNASSIGNED_ID); setCompartmentFilter("all"); }} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left text-sm font-medium text-amber-900">Unassigned freezer items · {unassignedCount}</button>}
+            {unassignedCount > 0 && <button type="button" onClick={() => { setFreezerFilter(UNASSIGNED_ID); setCompartmentFilter("all"); }} aria-pressed={freezerFilter === UNASSIGNED_ID}
+              className={`rounded-2xl border bg-amber-50 p-4 text-left text-sm font-medium text-amber-900 ${freezerFilter === UNASSIGNED_ID ? "border-amber-600 ring-2 ring-amber-200" : "border-amber-200"}`}>
+              Unassigned freezer items · {unassignedCount}{freezerFilter === UNASSIGNED_ID && <span className="ml-2 text-xs font-semibold">Selected</span>}
+            </button>}
           </div>
-          {showLocations && <button type="button" onClick={addFreezer} disabled={busy} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 disabled:opacity-40">+ Add freezer</button>}
+          {showLocations && !showAddFreezer && <button type="button" onClick={openAddFreezer} disabled={busy} className="min-h-11 rounded-xl border border-sky-200 bg-white px-4 text-sm font-semibold text-sky-800 disabled:opacity-40">+ Add freezer</button>}
+          {showLocations && addFreezerForm}
         </section>
       )}
 
-      <section aria-label="Frozen food" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      {!loadError && <section aria-label="Frozen food" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div><h2 className="text-lg font-bold text-slate-950">Frozen food</h2><p className="text-xs text-slate-500">{visibleEntries.length} item groups</p></div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -392,10 +442,11 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
                   <p className="text-xs text-slate-500">{entry.locationLabel}</p>
                   {entry.frozenAt && <p className="mt-0.5 text-xs text-slate-500">Frozen {entry.frozenAt}</p>}
                   {entry.mixedDates && <p className="mt-0.5 text-xs text-slate-500">Mixed freezing dates</p>}
+                  {entry.openedCount > 0 && <p className="mt-0.5 text-xs text-amber-700">{entry.openedCount} opened</p>}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={() => changeEntry(entry, -1)} disabled={busyEntry === entry.key} aria-label={`Use one ${entry.stockItem.name}`} className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 text-xl font-bold disabled:opacity-40">−</button>
-                  <span className="min-w-6 text-center text-lg font-bold" aria-label={`${entry.count} portions`}>{entry.count}</span>
+                  <button type="button" onClick={() => changeEntry(entry, -Math.min(1, entry.count))} disabled={busyEntry === entry.key} aria-label={`Use one ${entry.stockItem.name}`} className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 text-xl font-bold disabled:opacity-40">−</button>
+                  <span className="min-w-6 text-center" aria-label={`${entry.count} ${entry.unitLabel === "package" ? "packages" : "items"}`}><span className="block text-lg font-bold leading-none">{entry.count}</span><span className="text-[10px] text-slate-500">{entry.unitLabel === "package" ? "pkgs" : "items"}</span></span>
                   <button type="button" onClick={() => changeEntry(entry, 1)} disabled={busyEntry === entry.key || entry.freezerId === UNASSIGNED_ID} aria-label={`Add one ${entry.stockItem.name}`} className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-700 text-xl font-bold text-white disabled:opacity-40">+</button>
                 </div>
               </div>
@@ -408,7 +459,7 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
             </article>
           ))}
         </div>}
-      </section>
+      </section>}
 
       {showAdd && <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 sm:items-center" role="presentation">
         <form onSubmit={submitAdd} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
@@ -424,17 +475,12 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
         </form>
       </div>}
 
-      {showVoice && <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 sm:items-center" role="presentation">
-        <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-          <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Voice update</h2><button type="button" onClick={() => { recognitionRef.current?.abort(); setShowVoice(false); }} className="min-h-10 px-2 text-sm">Close</button></div>
-          <p className="mt-2 text-sm text-slate-600">Say “add 2 chicken thighs” or “remove 1 pizza”. Review before saving.</p>
-          <div className="mt-4 flex gap-2"><input value={voiceText} onChange={(event) => { setVoiceText(event.target.value); setVoiceCommand(null); }} placeholder={listening ? "Listening…" : "Type a command"} aria-label="Voice command" className="min-h-12 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm" /><button type="button" onClick={() => setVoiceCommand(parseVoiceCommand(voiceText))} className="rounded-xl border border-slate-200 px-3 text-sm font-semibold">Review</button></div>
-          <LocationSelect value={voiceLocationKey || defaultLocationKey} onChange={setVoiceLocationKey} locations={locations} className="mt-3 w-full" />
-          {voiceCommand ? <p className="mt-3 rounded-xl bg-sky-50 p-3 text-sm">{voiceCommand.action === "add" ? "Add" : "Remove"} {voiceCommand.count} × {voiceCommand.name}</p> : voiceText && <p className="mt-3 text-sm text-amber-800">Use “add 2 name” or “remove 1 name”.</p>}
-          {message && <p role="status" className="mt-3 text-sm text-rose-700">{message}</p>}
-          <button type="button" onClick={confirmVoice} disabled={!voiceCommand || !locations.length || busy} className="mt-4 min-h-12 w-full rounded-xl bg-emerald-700 font-bold text-white disabled:opacity-40">Confirm update</button>
-        </div>
-      </div>}
+      {showVoice && <VoiceInventoryDialog
+        householdId={householdId} stockItems={stockItems} entries={entries} locations={locations}
+        defaultLocationKey={defaultLocationKey} capturedText={voiceText} captureError={voiceError}
+        listening={listening} onStop={() => recognitionRef.current?.stop()} onRetry={beginVoice}
+        onCancel={cancelVoice} onSaved={(savedMessage) => { cancelVoice(); setMessage(savedMessage); }}
+      />}
     </div>
   );
 }

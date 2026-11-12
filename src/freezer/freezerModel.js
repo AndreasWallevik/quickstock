@@ -15,9 +15,9 @@ export function stockUnits(stockItem) {
     state: stockItem.state || "full",
   }));
 }
-
 export function activeUnitCount(units) {
-  return units.filter((unit) => unit.state !== "empty").length;
+  return units.reduce((total, unit) =>
+    total + (unit.state === "empty" ? 0 : Number(unit.amount) || 1), 0);
 }
 
 export function sortedFreezers(freezers) {
@@ -67,9 +67,12 @@ export function buildFreezerEntries(stockItems, freezers) {
 
   return [...entries.values()].map((entry) => {
     const dates = [...new Set(entry.units.map((unit) => unit.frozenAt).filter(Boolean))];
+    const labels = [...new Set(entry.units.map((unit) => unit.unitLabel || "item"))];
     return {
       ...entry,
-      count: entry.units.length,
+      count: activeUnitCount(entry.units),
+      unitLabel: labels.length === 1 ? labels[0] : "item",
+      openedCount: activeUnitCount(entry.units.filter((unit) => unit.state === "opened")),
       unitIds: entry.units.map((unit) => unit.id),
       frozenAt: dates.length === 1 && entry.units.every((unit) => unit.frozenAt) ? dates[0] : "",
       mixedDates: dates.length > 1 || (dates.length === 1 && entry.units.some((unit) => !unit.frozenAt)),
@@ -86,24 +89,23 @@ export function filterFreezerEntries(entries, { search = "", freezerId = "all", 
   );
 }
 
-export function makeFrozenUnits(count, location, frozenAt = "") {
-  return Array.from({ length: Math.max(1, Math.min(99, Math.ceil(Number(count) || 1))) }, () => ({
+export function makeFrozenUnits(count, location, frozenAt = "", { state = "full", unitLabel = "item" } = {}) {
+  const quantity = Number(count);
+  if (!Number.isFinite(quantity) || quantity < 0.01 || quantity > 99 ||
+      Math.abs(quantity * 100 - Math.round(quantity * 100)) > 0.000001) {
+    throw new Error("Quantity must be between 0.01 and 99.");
+  }
+  const amounts = Array.from({ length: Math.floor(quantity) }, () => 1);
+  const fraction = Math.round((quantity - Math.floor(quantity)) * 100) / 100;
+  if (fraction) amounts.push(fraction);
+  return amounts.map((amount) => ({
     id: newId(),
-    state: "full",
+    state,
+    ...(amount !== 1 ? { amount } : {}),
+    unitLabel,
     addedAt: Date.now(),
     freezerId: location.freezerId,
     compartmentId: location.compartmentId,
     ...(frozenAt ? { frozenAt } : {}),
   }));
-}
-
-export function parseVoiceCommand(text) {
-  const cleaned = text.trim().replace(/[.!?]+$/, "");
-  const match = cleaned.match(/^(add|put|freeze|remove|use|take)\s+(?:(\d+)\s+)?(.+)$/i);
-  if (!match) return null;
-  return {
-    action: /^(remove|use|take)$/i.test(match[1]) ? "remove" : "add",
-    count: Math.max(1, Math.min(99, Number(match[2]) || 1)),
-    name: match[3].trim(),
-  };
 }

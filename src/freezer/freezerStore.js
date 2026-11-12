@@ -59,9 +59,11 @@ export async function updateCompartments(db, householdId, freezerId, transform) 
   });
 }
 
-export async function addFrozenStock(db, householdId, stockItems, { name, count, location, frozenAt }) {
-  const matching = stockItems.find((item) => item.freezer && normalize(item.name) === normalize(name));
-  const newUnits = makeFrozenUnits(count, location, frozenAt);
+export async function addFrozenStock(db, householdId, stockItems, { name, count, location, frozenAt, state = "full", unitLabel = "item", stockItemId = "" }) {
+  const matching = stockItemId
+    ? stockItems.find((item) => item.id === stockItemId && item.freezer)
+    : stockItems.find((item) => item.freezer && normalize(item.name) === normalize(name));
+  const newUnits = makeFrozenUnits(count, location, frozenAt, { state, unitLabel });
   if (matching) {
     const itemRef = stockRef(db, householdId, matching.id);
     await runTransaction(db, async (transaction) => {
@@ -107,11 +109,15 @@ export async function changeFrozenStock(db, householdId, entry, delta) {
       units = units.concat(makeFrozenUnits(delta, location, entry.frozenAt));
     } else {
       const selected = new Set(entry.unitIds);
-      let remaining = Math.min(-delta, entry.unitIds.length);
+      let remaining = -delta;
       units = units.map((unit) => {
         if (remaining <= 0 || !selected.has(unit.id) || unit.state === "empty") return unit;
-        remaining -= 1;
-        return { ...unit, state: "empty", emptiedAt: Date.now() };
+        const amount = Number(unit.amount) || 1;
+        const used = Math.min(remaining, amount);
+        remaining = Math.round((remaining - used) * 100) / 100;
+        return used === amount
+          ? { ...unit, state: "empty", emptiedAt: Date.now() }
+          : { ...unit, amount: Math.round((amount - used) * 100) / 100 };
       });
       if (remaining > 0) throw new Error("Stock changed. Please try again.");
     }

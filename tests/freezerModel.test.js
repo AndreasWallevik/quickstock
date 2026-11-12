@@ -6,7 +6,6 @@ import {
   filterFreezerEntries,
   locationOptions,
   makeFrozenUnits,
-  parseVoiceCommand,
   UNASSIGNED_ID,
 } from "../src/freezer/freezerModel.js";
 
@@ -58,10 +57,4 @@ test("new frozen units have location and optional date without a fresh-food expi
   assert.equal(units[0].frozenAt, "2026-11-11");
   assert.equal(units[0].expiresAt, undefined);
   assert.equal(activeUnitCount([...units, { id: "old", state: "empty" }]), 2);
-});
-
-test("voice commands require a reviewable add or remove action", () => {
-  assert.deepEqual(parseVoiceCommand("Add 3 pizzas."), { action: "add", count: 3, name: "pizzas" });
-  assert.deepEqual(parseVoiceCommand("use 1 chicken"), { action: "remove", count: 1, name: "chicken" });
-  assert.equal(parseVoiceCommand("chicken"), null);
 });

@@ -399,7 +399,7 @@ const withExpiryApplied = (units = [], t = now()) =>
 const countInStock = (units) =>
   units.reduce(
     (count, unit) =>
-      count + (["full", "opened", "expired"].includes(unit.state || "full") ? 1 : 0),
+      count + (["full", "opened", "expired"].includes(unit.state || "full") ? Number(unit.amount) || 1 : 0),
     0
   );
 
@@ -469,7 +469,8 @@ const getStockSignals = (product, soonDays = 2) => {
 };
 
 const getAvailableStockUnitCount = (stockItem) =>
-  withExpiryApplied(toUnits(stockItem)).filter(isUsableStockUnit).length;
+  withExpiryApplied(toUnits(stockItem)).filter(isUsableStockUnit)
+    .reduce((count, unit) => count + (Number(unit.amount) || 1), 0);
 
 const isStockItemAvailable = (stockItem) => getAvailableStockUnitCount(stockItem) > 0;
 
@@ -3138,9 +3139,13 @@ function WeeklyMenu({
         const consumedUnits = [];
         const nextUnits = withExpiryApplied(toUnits(stockItem)).map((unit) => {
           if (remaining <= 0 || !canConsumeUnit(unit)) return unit;
-          remaining -= 1;
+          const availableAmount = Number(unit.amount) || 1;
+          const consumedAmount = Math.min(remaining, availableAmount);
+          remaining = Math.round((remaining - consumedAmount) * 100) / 100;
           consumedUnits.push({ ...unit });
-          return { ...unit, state: "empty", emptiedAt: now() };
+          return consumedAmount === availableAmount
+            ? { ...unit, state: "empty", emptiedAt: now() }
+            : { ...unit, amount: Math.round((availableAmount - consumedAmount) * 100) / 100, state: "opened" };
         });
         const consumed = required.quantity - remaining;
 
