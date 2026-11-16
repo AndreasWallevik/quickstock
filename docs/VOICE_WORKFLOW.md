@@ -1,5 +1,11 @@
 # Voice inventory workflow
 
+## Phase 2 extension
+
+The Fridge and Freezer screens now share the same browser transcription, Norwegian interpretation, review dialog, and Firestore transaction. The review supports `add`, `remove`, `discard`, `open`, `move`, `set_quantity`, and `set_weight`. It can interpret multiple additions in one recording, grams and kilos (including decimal commas), optional known expiry or freezing dates, and fridge/freezer location phrases. Weight for multiple items must be marked total or per item. Partial changes to a batch with a known total weight require explicit acceptance of unknown resulting weight. Ambiguous names, counts, or destinations still block confirmation. No new AI or transcription service, cost, or storage of raw audio/transcripts has been introduced. See [phase 2 implementation notes](INVENTORY_FIRST_PHASE2_IMPLEMENTATION.md).
+
+The original first-slice description below records the initial scope and design rationale.
+
 Implemented as a first vertical slice on 12 November 2026. The app does not send audio or text to an app-owned AI service, and it does not save raw audio or transcripts to Firestore.
 
 ## Chosen approach

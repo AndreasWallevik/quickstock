@@ -114,6 +114,9 @@ export async function changeFrozenStock(db, householdId, entry, delta) {
         if (remaining <= 0 || !selected.has(unit.id) || unit.state === "empty") return unit;
         const amount = Number(unit.amount) || 1;
         const used = Math.min(remaining, amount);
+        if (used < amount && unit.weightGrams) {
+          throw new Error("Review the unknown weight before splitting this batch.");
+        }
         remaining = Math.round((remaining - used) * 100) / 100;
         return used === amount
           ? { ...unit, state: "empty", emptiedAt: Date.now() }

@@ -1,24 +1,10 @@
+import { activeUnitCount, makeStockUnits, newId, stockUnits, storageKindForUnit, weightSummary } from "../inventory/stockModel.js";
+
 const normalize = (value = "") => value.trim().toLocaleLowerCase("nb");
 
-export const newId = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+export { activeUnitCount, newId, stockUnits };
 
 export const UNASSIGNED_ID = "unassigned";
-
-export function stockUnits(stockItem) {
-  if (Array.isArray(stockItem.items)) return stockItem.items;
-  const count = Math.max(0, Math.ceil(Number(stockItem.quantity) || 0));
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${stockItem.id || "unit"}-${index}`,
-    state: stockItem.state || "full",
-  }));
-}
-export function activeUnitCount(units) {
-  return units.reduce((total, unit) =>
-    total + (unit.state === "empty" ? 0 : Number(unit.amount) || 1), 0);
-}
 
 export function sortedFreezers(freezers) {
   return [...freezers].sort((a, b) =>
@@ -30,6 +16,7 @@ export function sortedFreezers(freezers) {
 export function locationOptions(freezers) {
   return sortedFreezers(freezers).flatMap((freezer) =>
     (freezer.compartments || []).map((compartment) => ({
+      kind: "freezer",
       freezerId: freezer.id,
       compartmentId: compartment.id,
       freezerName: freezer.name,
@@ -46,7 +33,7 @@ export function buildFreezerEntries(stockItems, freezers) {
 
   for (const stockItem of stockItems) {
     for (const unit of stockUnits(stockItem)) {
-      if (unit.state === "empty" || (!stockItem.freezer && !unit.freezerId)) continue;
+      if (unit.state === "empty" || storageKindForUnit(unit, stockItem) !== "freezer") continue;
       const location = locations.get(`${unit.freezerId}/${unit.compartmentId}`);
       const freezerId = location?.freezerId || UNASSIGNED_ID;
       const compartmentId = location?.compartmentId || UNASSIGNED_ID;
@@ -54,6 +41,7 @@ export function buildFreezerEntries(stockItems, freezers) {
       if (!entries.has(key)) {
         entries.set(key, {
           key,
+          locationKey: `${freezerId}/${compartmentId}`,
           stockItem,
           freezerId,
           compartmentId,
@@ -68,8 +56,10 @@ export function buildFreezerEntries(stockItems, freezers) {
   return [...entries.values()].map((entry) => {
     const dates = [...new Set(entry.units.map((unit) => unit.frozenAt).filter(Boolean))];
     const labels = [...new Set(entry.units.map((unit) => unit.unitLabel || "item"))];
+    const { knownGrams, hasUnknown } = weightSummary(entry.units);
     return {
       ...entry,
+      knownGrams, hasUnknown,
       count: activeUnitCount(entry.units),
       unitLabel: labels.length === 1 ? labels[0] : "item",
       openedCount: activeUnitCount(entry.units.filter((unit) => unit.state === "opened")),
@@ -90,22 +80,5 @@ export function filterFreezerEntries(entries, { search = "", freezerId = "all", 
 }
 
 export function makeFrozenUnits(count, location, frozenAt = "", { state = "full", unitLabel = "item" } = {}) {
-  const quantity = Number(count);
-  if (!Number.isFinite(quantity) || quantity < 0.01 || quantity > 99 ||
-      Math.abs(quantity * 100 - Math.round(quantity * 100)) > 0.000001) {
-    throw new Error("Quantity must be between 0.01 and 99.");
-  }
-  const amounts = Array.from({ length: Math.floor(quantity) }, () => 1);
-  const fraction = Math.round((quantity - Math.floor(quantity)) * 100) / 100;
-  if (fraction) amounts.push(fraction);
-  return amounts.map((amount) => ({
-    id: newId(),
-    state,
-    ...(amount !== 1 ? { amount } : {}),
-    unitLabel,
-    addedAt: Date.now(),
-    freezerId: location.freezerId,
-    compartmentId: location.compartmentId,
-    ...(frozenAt ? { frozenAt } : {}),
-  }));
+  return makeStockUnits(count, { ...location, kind: "freezer" }, { opened: state === "opened", unitLabel, frozenAt });
 }

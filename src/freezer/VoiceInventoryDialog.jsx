@@ -4,7 +4,10 @@ import { newId } from "./freezerModel";
 import { applyInventoryOperations } from "./inventoryChanges";
 import { interpretInventoryText, prepareInventoryOperations } from "./inventoryInterpretation";
 
-const actionLabels = { add: "Add", remove: "Use / remove", move: "Move", set_quantity: "Set remaining" };
+const actionLabels = {
+  add: "Add", remove: "Use / remove", discard: "Discard", open: "Open",
+  move: "Move", set_quantity: "Set remaining count", set_weight: "Set remaining weight",
+};
 
 export default function VoiceInventoryDialog({
   householdId, stockItems, entries, locations, defaultLocationKey,
@@ -33,9 +36,7 @@ export default function VoiceInventoryDialog({
   }), [proposals, entries, stockItems, locations, sourceLocationKey]);
   const hasIssues = prepared.some((operation) => operation.issues.length > 0);
   const sourceLocation = locations.find((location) => location.key === sourceLocationKey);
-  const sourceEntries = entries.filter((entry) => `${entry.freezerId}/${entry.compartmentId}` === sourceLocationKey);
-  const sourceProducts = [...new Map(sourceEntries.map((entry) => [entry.stockItem.id, entry.stockItem])).values()];
-  const existingProducts = [...new Map(stockItems.filter((item) => item.freezer).map((item) => [item.id, item])).values()];
+  const existingProducts = [...new Map(stockItems.map((item) => [item.id, item])).values()];
 
   const interpret = () => {
     const result = interpretInventoryText(transcript);
@@ -52,7 +53,8 @@ export default function VoiceInventoryDialog({
 
   const addCorrectionRow = () => setProposals((current) => [...current, {
     id: newId(), kind: "add", name: "", quantity: null, unitLabel: "item", opened: false,
-    stockItemId: "", targetLocationKey: "", targetText: "", sourcePhrase: "Manual correction",
+    stockItemId: "", sourceLocationKey, targetLocationKey: "", targetText: "", sourcePhrase: "Manual correction",
+    weightGrams: null, weightScope: "", expiryDate: "", frozenAt: "",
   }]);
 
   const retry = () => {
@@ -86,7 +88,7 @@ export default function VoiceInventoryDialog({
         </div>
         <p className="mt-3 text-sm text-slate-600">For example: “To pakker bacon, en åpnet pakke tacolefser og en halv baguette.” You review every change before it is saved.</p>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">Selected compartment
+          <label className="min-w-0 flex-1 text-sm font-medium text-slate-700">Selected location
             <select value={sourceLocationKey} onChange={(event) => setSourceLocationKey(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">
               {locations.map((location) => <option key={location.key} value={location.key}>{location.label}</option>)}
             </select>
@@ -98,7 +100,7 @@ export default function VoiceInventoryDialog({
         </div>
         {listening && <p role="status" className="mt-2 text-sm font-medium text-sky-800">Listening in Norwegian (nb-NO)…</p>}
         {captureError && <p role="status" className="mt-2 text-sm text-amber-800">{captureError}</p>}
-        {spokenLocation && <p className="mt-2 text-xs text-slate-600">Spoken location: “{spokenLocation}”. Changes use the selected compartment: {sourceLocation?.label || "none"}.</p>}
+        {spokenLocation && <p className="mt-2 text-xs text-slate-600">Spoken location: “{spokenLocation}”. Selected location: {sourceLocation?.label || "none"}.</p>}
 
         <label className="mt-4 block text-sm font-medium text-slate-700">Transcript or typed update
           <textarea value={transcript} onChange={(event) => { setTranscript(event.target.value); setDirty(true); }} placeholder="Skriv eller si: Legg til to pakker bacon" className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm" />
@@ -110,15 +112,21 @@ export default function VoiceInventoryDialog({
           <div className="flex items-center justify-between gap-2"><h3 className="font-bold text-slate-950">Review changes</h3><span className="text-xs text-slate-500">{prepared.length} proposed</span></div>
           {prepared.map((operation) => {
             const original = proposals.find((item) => item.id === operation.id);
+            const sourceEntries = entries.filter((entry) =>
+              (entry.locationKey || `${entry.freezerId}/${entry.compartmentId}`) === operation.sourceLocationKey);
+            const sourceProducts = [...new Map(sourceEntries.map((entry) => [entry.stockItem.id, entry.stockItem])).values()];
             const products = operation.kind === "add" ? existingProducts : sourceProducts;
+            const selectedEntry = sourceEntries.find((entry) => entry.stockItem.id === operation.stockItemId);
+            const selectedLocation = locations.find((location) => location.key === operation.sourceLocationKey);
             return <article key={operation.id} className={`rounded-xl border p-3 ${operation.issues.length ? "border-amber-200 bg-amber-50/50" : "border-emerald-100 bg-white"}`}>
               <div className="flex items-center justify-between gap-2"><p className="min-w-0 truncate text-xs text-slate-500">Heard: {operation.sourcePhrase}</p><button type="button" onClick={() => setProposals((current) => current.filter((item) => item.id !== operation.id))} className="min-h-8 px-2 text-xs text-rose-700">Discard</button></div>
               {original.kind === "unknown" && <p className="mt-2 text-xs text-amber-900">We could not identify an inventory change. Check the food name, then choose an action and quantity.</p>}
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[145px_1fr_90px]">
                 <label className="text-xs font-medium text-slate-600">Action<select value={original.kind} onChange={(event) => update(operation.id, { kind: event.target.value, stockItemId: "" })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">{original.kind === "unknown" && <option value="unknown">Choose action</option>}{Object.entries(actionLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
                 <label className="text-xs font-medium text-slate-600">Food<input value={original.name} onChange={(event) => update(operation.id, { name: event.target.value, stockItemId: "" })} placeholder="Choose or correct name" className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm" /></label>
-                <label className="text-xs font-medium text-slate-600">Quantity<input type="number" min={operation.kind === "set_quantity" ? "0" : "0.01"} max="99" step="0.01" value={original.quantity ?? ""} onChange={(event) => update(operation.id, { quantity: event.target.value })} placeholder="?" className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm" /></label>
+                {operation.kind !== "set_weight" && <label className="text-xs font-medium text-slate-600">Quantity<input type="number" min={operation.kind === "set_quantity" ? "0" : "0.01"} max="99" step="0.01" value={original.all ? operation.quantity ?? "" : original.quantity ?? ""} onChange={(event) => update(operation.id, { quantity: event.target.value, all: false })} placeholder="?" className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm" /></label>}
               </div>
+              <label className="mt-2 block text-xs font-medium text-slate-600">From<select value={original.sourceLocationKey || operation.sourceLocationKey || ""} onChange={(event) => update(operation.id, { sourceLocationKey: event.target.value, stockItemId: "" })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Choose location</option>{locations.map((location) => <option key={location.key} value={location.key}>{location.label}</option>)}</select></label>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
                 <label className="min-w-0 flex-1 text-xs font-medium text-slate-600">Existing item <span className="font-normal">(choose if ambiguous)</span>
                   <select value={original.stockItemId || (operation.stockItemId && products.some((item) => item.id === operation.stockItemId) ? operation.stockItemId : "")}
@@ -128,10 +136,21 @@ export default function VoiceInventoryDialog({
                     {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
                   </select>
                 </label>
-                <label className="text-xs font-medium text-slate-600">Unit<select value={original.unitLabel} onChange={(event) => update(operation.id, { unitLabel: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="item">Item / portion</option><option value="package">Package</option></select></label>
+                <label className="text-xs font-medium text-slate-600">Unit<select value={original.unitLabel} onChange={(event) => update(operation.id, { unitLabel: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="item">Item</option><option value="package">Package</option><option value="portion">Portion</option></select></label>
                 {operation.kind === "add" && <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={original.opened} onChange={(event) => update(operation.id, { opened: event.target.checked })} />Opened</label>}
               </div>
-              {operation.kind === "move" && <label className="mt-2 block text-xs font-medium text-slate-600">Destination<select value={original.targetLocationKey || operation.targetLocationKey || ""} onChange={(event) => update(operation.id, { targetLocationKey: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Choose compartment</option>{locations.map((location) => <option key={location.key} value={location.key}>{location.label}</option>)}</select></label>}
+              {(operation.kind === "add" || operation.kind === "set_weight") && <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="text-xs font-medium text-slate-600">Weight in grams <span className="font-normal">(optional for add)</span><input type="number" min="1" max="1000000" step="1" value={original.weightGrams ?? ""} onChange={(event) => update(operation.id, { weightGrams: event.target.value })} placeholder="Unknown" className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm" /></label>
+                {operation.kind === "add" && original.weightGrams !== null && original.weightGrams !== "" && <label className="text-xs font-medium text-slate-600">Weight means<select value={original.weightScope || "unspecified"} onChange={(event) => update(operation.id, { weightScope: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="unspecified">Choose total or per item</option><option value="total">Total for all</option><option value="per_unit">Per item/package</option></select></label>}
+              </div>}
+              {operation.kind === "set_weight" && selectedEntry?.units?.length > 1 && <label className="mt-2 block text-xs font-medium text-slate-600">Item or batch<select value={original.unitId || ""} onChange={(event) => update(operation.id, { unitId: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Choose item or batch</option>{selectedEntry.units.map((unit, index) => <option key={unit.id} value={unit.id}>#{index + 1} · {unit.amount || 1} {unit.unitLabel || "item"}{unit.weightGrams ? ` · ${unit.weightGrams} g` : ""}</option>)}</select></label>}
+              {operation.kind === "add" && selectedLocation?.kind === "fridge" && <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <label className="flex-1 text-xs font-medium text-slate-600">Expires (if known)<input type="date" value={original.expiryDate || ""} onChange={(event) => update(operation.id, { expiryDate: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm" /></label>
+                <label className="flex-1 text-xs font-medium text-slate-600">Type<select value={original.label || ""} onChange={(event) => update(operation.id, { label: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Food</option><option value="Leftover">Leftover</option><option value="Prepared">Prepared meal</option></select></label>
+              </div>}
+              {operation.kind === "add" && selectedLocation?.kind === "freezer" && <label className="mt-2 block text-xs font-medium text-slate-600">Date frozen (optional)<input type="date" value={original.frozenAt || ""} onChange={(event) => update(operation.id, { frozenAt: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 px-2 text-sm" /></label>}
+              {operation.kind === "move" && <label className="mt-2 block text-xs font-medium text-slate-600">Destination<select value={original.targetLocationKey || operation.targetLocationKey || ""} onChange={(event) => update(operation.id, { targetLocationKey: event.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Choose location</option>{locations.map((location) => <option key={location.key} value={location.key}>{location.label}</option>)}</select></label>}
+              {operation.issues.some((issue) => issue.includes("weighed batch")) && <label className="mt-2 flex items-center gap-2 text-xs text-amber-900"><input type="checkbox" checked={Boolean(original.allowUnknownWeight)} onChange={(event) => update(operation.id, { allowUnknownWeight: event.target.checked })} />I understand the remaining weight will be unknown</label>}
               {operation.kind === "add" && operation.stockItemId && !operation.issues.length && <p className="mt-2 text-xs text-emerald-800">Adds to an existing stock item, avoiding a duplicate.</p>}
               {operation.issues.length > 0 && <ul className="mt-2 list-inside list-disc text-xs text-amber-900">{operation.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul>}
             </article>;

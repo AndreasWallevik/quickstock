@@ -26,6 +26,8 @@ import { auth, db, firebaseReady, googleProvider } from "./firebase";
 import starterStockItems from "../data/stockItems.seed.json";
 import demoRecipes from "../data/recipes.seed.json";
 import FreezerHome from "./freezer/FreezerHome";
+import FridgeHome from "./inventory/FridgeHome";
+import { activeUnitCount, stockUnits, storageKindForUnit } from "./inventory/stockModel";
 
 const DAY = 24 * 60 * 60 * 1000;
 const STOCK_STATES = ["full", "opened", "empty", "expired"];
@@ -41,6 +43,7 @@ const WEEK_DAYS = [
 ];
 const MAIN_VIEWS = [
   { id: "freezer", label: "Freezer", icon: "🧊" },
+  { id: "fridge", label: "Fridge", icon: "🥬" },
   { id: "weekly", label: "Weekly Menu", icon: "🍽" },
   { id: "shopping", label: "Shopping List", icon: "🛒" },
   { id: "inventory", label: "Inventory", icon: "🧊" },
@@ -49,10 +52,11 @@ const MAIN_VIEWS = [
 ];
 const PRIMARY_VIEWS = [
   { id: "freezer", label: "🧊 Freezer" },
+  { id: "fridge", label: "🥬 Fridge" },
   { id: "recipes", label: "📖 Recipes" },
   { id: "more", label: "More" },
 ];
-const SECONDARY_VIEWS = MAIN_VIEWS.filter((view) => !["freezer", "recipes"].includes(view.id));
+const SECONDARY_VIEWS = MAIN_VIEWS.filter((view) => !["freezer", "fridge", "recipes"].includes(view.id));
 const INVENTORY_MODES = [
   { id: "fridge", label: "Fridge View" },
   { id: "freezer", label: "Freezer View" },
@@ -2297,8 +2301,12 @@ function ShoppingListPanel({
       if (stockSnapshot?.exists()) {
         const stockItem = { id: stockSnapshot.id, ...stockSnapshot.data() };
         const restockAmount = shoppingRestockAmount(latestShoppingItem, stockItem);
+        const hasExplicitLocations = stockItem.items?.some((unit) => unit.storageKind);
         const nextUnits = toUnits(stockItem).concat(
-          Array.from({ length: restockAmount }, () => genUnit(stockItem.shelfLifeDays))
+          Array.from({ length: restockAmount }, () => ({
+            ...genUnit(stockItem.shelfLifeDays),
+            ...(hasExplicitLocations ? { storageKind: "unassigned" } : {}),
+          }))
         );
         transaction.update(stockRef, {
           items: nextUnits,
@@ -3137,10 +3145,15 @@ function WeeklyMenu({
 
         let remaining = required.quantity;
         const consumedUnits = [];
+        let skippedWeighedBatch = false;
         const nextUnits = withExpiryApplied(toUnits(stockItem)).map((unit) => {
           if (remaining <= 0 || !canConsumeUnit(unit)) return unit;
           const availableAmount = Number(unit.amount) || 1;
           const consumedAmount = Math.min(remaining, availableAmount);
+          if (consumedAmount < availableAmount && unit.weightGrams) {
+            skippedWeighedBatch = true;
+            return unit;
+          }
           remaining = Math.round((remaining - consumedAmount) * 100) / 100;
           consumedUnits.push({ ...unit });
           return consumedAmount === availableAmount
@@ -3163,7 +3176,7 @@ function WeeklyMenu({
         }
 
         if (remaining > 0) {
-          skipped.push(`${stockItem.name}: consumed ${consumed}/${required.quantity}`);
+          skipped.push(`${stockItem.name}: consumed ${consumed}/${required.quantity}${skippedWeighedBatch ? " (weighed batch needs a manual update)" : ""}`);
         }
       });
 
@@ -3680,10 +3693,12 @@ function Inventory({ householdId }) {
 
   const inventoryProducts = useMemo(() => {
     if (inventoryMode === "fridge") {
-      return items.filter((product) => !product.freezer);
+      return items.filter((product) => stockUnits(product).some((unit) => unit.state !== "empty" &&
+        ["fridge", "unassigned"].includes(storageKindForUnit(unit, product))));
     }
     if (inventoryMode === "freezer") {
-      return items.filter((product) => product.freezer);
+      return items.filter((product) => stockUnits(product).some((unit) => unit.state !== "empty" &&
+        storageKindForUnit(unit, product) === "freezer"));
     }
     if (inventoryMode === "expiring") {
       return items.filter((product) => {
@@ -3693,6 +3708,7 @@ function Inventory({ householdId }) {
     }
     return items;
   }, [inventoryMode, items, soonDays]);
+  const hasLocationAwareStock = items.some((product) => product.items?.some((unit) => unit.storageKind));
 
   const inventoryGroups = useMemo(
     () => groupStockProducts(inventoryProducts, groupBy),
@@ -3924,8 +3940,17 @@ function Inventory({ householdId }) {
               {group} <span className="text-slate-400">({products.length})</span>
             </div>
             <div className={`grid grid-cols-1 gap-4 ${fullWidth ? "md:grid-cols-2 xl:grid-cols-3" : "sm:grid-cols-2"}`}>
-              {products.map((product) => (
-                <ProductCard
+              {products.map((product) => product.items?.some((unit) => unit.storageKind) ? (
+                <article key={product.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-semibold text-slate-950">{product.emoji || pickEmoji(product.name)} {product.name}</h3>
+                  <p className="mt-1 text-sm text-slate-600">{activeUnitCount(stockUnits(product))} items across storage locations</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button type="button" onClick={() => setMainView("fridge")} className="min-h-10 rounded-xl border border-emerald-200 px-3 text-sm text-emerald-800">Open Fridge</button>
+                    <button type="button" onClick={() => setMainView("freezer")} className="min-h-10 rounded-xl border border-sky-200 px-3 text-sm text-sky-800">Open Freezer</button>
+                    <button type="button" onClick={() => openEdit(product)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-sm">Edit product</button>
+                  </div>
+                </article>
+              ) : <ProductCard
                   key={product.id}
                   product={product}
                   soonDays={soonDays}
@@ -3938,8 +3963,7 @@ function Inventory({ householdId }) {
                   onAddToShoppingList={() => addStockItemToShoppingList(product)}
                   onEdit={() => openEdit(product)}
                   onDelete={() => deleteStockItem(product)}
-                />
-              ))}
+                />)}
             </div>
           </section>
         ))
@@ -4114,7 +4138,11 @@ function Inventory({ householdId }) {
       </div>
       <div className={inventoryMode === "multi" ? "grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
         {inventoryMode === "fridge"
-          ? renderFridgeStockCards(inventoryGroups, "No fridge-view stock items yet.")
+          ? hasLocationAwareStock
+            ? <FridgeHome householdId={householdId} stockItems={items} stockLoading={loading} stockError={stockError} />
+            : renderFridgeStockCards(inventoryGroups, "No fridge-view stock items yet.")
+          : inventoryMode === "freezer" && hasLocationAwareStock
+            ? <FreezerHome householdId={householdId} stockItems={items} stockLoading={loading} stockError={stockError} />
           : renderStockCards(
               inventoryGroups,
               inventoryMode === "freezer"
@@ -4156,21 +4184,22 @@ function Inventory({ householdId }) {
       <div className="mb-4">
         <ViewSelector
           options={PRIMARY_VIEWS}
-          value={["freezer", "recipes"].includes(mainView) ? mainView : "more"}
+          value={["freezer", "fridge", "recipes"].includes(mainView) ? mainView : "more"}
           onChange={(view) => setMainView(view === "more" ? "inventory" : view)}
         />
       </div>
 
-      {!["freezer", "recipes"].includes(mainView) && <div className="mb-4">
+      {!["freezer", "fridge", "recipes"].includes(mainView) && <div className="mb-4">
         <ViewSelector options={SECONDARY_VIEWS} value={mainView} onChange={setMainView} />
       </div>}
 
-      {mainView !== "freezer" && renderControls()}
-      {mainView !== "freezer" && <div className="mb-6">
+      {!(["freezer", "fridge"].includes(mainView)) && renderControls()}
+      {!(["freezer", "fridge"].includes(mainView)) && <div className="mb-6">
         <StatsStrip stats={statsStripItems} onStatClick={handleStatClick} />
       </div>}
 
       {mainView === "freezer" && <FreezerHome key={householdId} householdId={householdId} stockItems={items} stockLoading={loading} stockError={stockError} />}
+      {mainView === "fridge" && <FridgeHome key={householdId} householdId={householdId} stockItems={items} stockLoading={loading} stockError={stockError} />}
       {mainView === "overview" && renderOverview()}
       {mainView === "inventory" && renderInventoryView()}
       {mainView === "shopping" && (

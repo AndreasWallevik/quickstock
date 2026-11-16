@@ -8,6 +8,7 @@ import {
 } from "../src/freezer/inventoryInterpretation.js";
 import { applyOperationToUnits } from "../src/freezer/inventoryChanges.js";
 import { startBrowserTranscription } from "../src/freezer/browserTranscription.js";
+import { buildFridgeEntries } from "../src/inventory/stockModel.js";
 
 const freezers = [
   { id: "kitchen", name: "Kjøkkenfryser", position: 0, compartments: [{ id: "top", name: "Øverste skuff" }] },
@@ -167,4 +168,76 @@ test("fractional removal and move preserve the rest of a portion", () => {
   assert.equal(moved[0].amount, 0.5);
   assert.equal(moved[1].amount, 0.5);
   assert.equal(moved[1].freezerId, "basement");
+});
+
+test("Norwegian weights stay separate from food and quantity", () => {
+  const cases = [
+    ["Legg til én kylling på 2 kilo", "Chicken", 1, 2000, "total"],
+    ["Legg til en kylling 2000 gram", "Chicken", 1, 2000, "total"],
+    ["Legg til 400 gram kjøttdeig", "Kjøttdeig", 1, 400, "total"],
+    ["Legg til to pakker bacon på 150 gram hver", "Bacon", 2, 150, "per_unit"],
+    ["Legg til en halv kilo scampi", "Scampi", 1, 500, "total"],
+    ["Legg til halvannen kilo kylling", "Chicken", 1, 1500, "total"],
+    ["Legg til kylling på 1,5 kilo", "Chicken", 1, 1500, "total"],
+    ["Legg til to pakker bacon på 600 gram til sammen", "Bacon", 2, 600, "total"],
+  ];
+  for (const [speech, name, quantity, weightGrams, weightScope] of cases) {
+    const [proposal] = interpretInventoryText(speech).proposals;
+    assert.equal(proposal.name, name, speech);
+    assert.equal(proposal.quantity, quantity, speech);
+    assert.equal(proposal.weightGrams, weightGrams, speech);
+    assert.equal(proposal.weightScope, weightScope, speech);
+  }
+});
+
+test("weight without a per-unit or total cue stays unresolved for multiple items", () => {
+  const [proposal] = interpretInventoryText("Legg til to pakker bacon på 300 gram").proposals;
+  const [operation] = prepareInventoryOperations([proposal], context);
+  assert.ok(operation.issues.some((issue) => issue.includes("total or per item")));
+});
+
+test("fridge phrases resolve location without putting it in the food name", () => {
+  const withFridge = [{ key: "fridge", kind: "fridge", label: "Fridge" }, ...locations];
+  const proposals = interpretInventoryText("Legg til to pakker kjøttdeig og tre paprika i kjøleskapet").proposals;
+  assert.deepEqual(proposals.map((proposal) => proposal.name), ["Kjøttdeig", "Paprika"]);
+  const fridgeAdds = prepareInventoryOperations(proposals, { ...context, locations: withFridge });
+  assert.deepEqual(fridgeAdds.map((operation) => operation.sourceLocationKey), ["fridge", "fridge"]);
+  const [move] = prepareInventoryOperations(
+    interpretInventoryText("Flytt kyllingen fra fryseren til kjøleskapet").proposals,
+    { ...context, locations: withFridge }
+  );
+  assert.equal(move.targetLocationKey, "fridge");
+  assert.equal(move.sourceLocationKey, source.key);
+  const fridgeProducts = [{ id: "milk", name: "Melk", freezer: false, items: [{ id: "m1", state: "full" }] }];
+  const [used] = prepareInventoryOperations(
+    interpretInventoryText("Vi har brukt opp melken").proposals,
+    { entries: buildFridgeEntries(fridgeProducts), stockItems: fridgeProducts, locations: withFridge, sourceLocationKey: "fridge" }
+  );
+  assert.equal(used.kind, "remove");
+  assert.equal(used.quantity, 1);
+  assert.equal(used.issues.length, 0);
+});
+
+test("opened and used-up fridge phrases produce reviewed changes", () => {
+  const fridge = { key: "fridge", kind: "fridge", label: "Fridge" };
+  const product = { id: "ham", name: "Skinke", freezer: false, items: [
+    { id: "h1", state: "full", storageKind: "fridge" },
+    { id: "h2", state: "full", storageKind: "fridge" },
+  ] };
+  const fridgeContext = {
+    entries: buildFridgeEntries([product]), stockItems: [product],
+    locations: [fridge, ...locations], sourceLocationKey: "fridge",
+  };
+  const [opened] = prepareInventoryOperations(interpretInventoryText("Åpnet en pakke skinke").proposals, fridgeContext);
+  assert.equal(opened.kind, "open");
+  assert.equal(opened.quantity, 1);
+  assert.equal(opened.issues.length, 0);
+  const updated = applyOperationToUnits(product.items, opened, fridge);
+  assert.equal(updated.filter((unit) => unit.state === "opened").length, 1);
+
+  const usedContext = { ...fridgeContext, entries: buildFridgeEntries([{ ...product, items: updated }]) };
+  const [used] = prepareInventoryOperations(interpretInventoryText("Vi har brukt opp skinke").proposals, usedContext);
+  assert.equal(used.quantity, 2);
+  assert.equal(used.issues.length, 0);
+  assert.ok(applyOperationToUnits(updated, used, fridge).every((unit) => unit.state === "empty"));
 });

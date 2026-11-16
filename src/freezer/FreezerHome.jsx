@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { useMemo, useState } from "react";
 import { db } from "../firebase";
 import {
   buildFreezerEntries,
   filterFreezerEntries,
   locationOptions,
   newId,
-  sortedFreezers,
   UNASSIGNED_ID,
 } from "./freezerModel";
 import VoiceInventoryDialog from "./VoiceInventoryDialog";
-import { startBrowserTranscription } from "./browserTranscription";
+import useFreezers from "./useFreezers";
+import useVoiceCapture from "../inventory/useVoiceCapture";
+import { buildFridgeEntries } from "../inventory/stockModel";
+import QuickAddDialog from "../inventory/QuickAddDialog";
+import UnitDetailsRow from "../inventory/UnitDetailsRow";
+import InventoryExportControls from "../inventory/InventoryExportControls";
+import { moveUnassignedFrozenToFridge } from "../inventory/inventoryStore";
+import { prepareInventoryOperations } from "./inventoryInterpretation";
+import { applyInventoryOperations } from "./inventoryChanges";
 import {
-  addFrozenStock,
   changeFrozenStock,
   createFreezer,
   deleteEmptyFreezer,
@@ -21,36 +26,6 @@ import {
   reorderFreezers,
   updateCompartments,
 } from "./freezerStore";
-
-const emptyDraft = { name: "", count: 1, locationKey: "", frozenAt: "" };
-
-function useFreezers(householdId) {
-  const [state, setState] = useState({ freezers: [], loading: true, error: "", errorCode: "" });
-  useEffect(() => {
-    if (!householdId) return undefined;
-    return onSnapshot(
-      collection(db, "households", householdId, "freezers"),
-      (snapshot) => {
-        console.info("[QuickStock freezer] Freezers loaded", { count: snapshot.size });
-        setState({
-          freezers: sortedFreezers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))),
-          loading: false,
-          error: "",
-          errorCode: "",
-        });
-      },
-      (error) => {
-        console.error("[QuickStock freezer] Freezer subscription failed", { code: error.code, message: error.message });
-        setState({
-          freezers: [], loading: false,
-          error: error.message || "Could not load freezers.",
-          errorCode: error.code || "",
-        });
-      }
-    );
-  }, [householdId]);
-  return state;
-}
 
 function LocationSelect({ value, onChange, locations, className = "" }) {
   return (
@@ -71,31 +46,23 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
   const { freezers, loading: freezersLoading, error: loadError, errorCode } = useFreezers(householdId);
   const entries = useMemo(() => buildFreezerEntries(stockItems, freezers), [stockItems, freezers]);
   const locations = useMemo(() => locationOptions(freezers), [freezers]);
+  const allLocations = useMemo(() => [{ key: "fridge", kind: "fridge", label: "Fridge" }, ...locations], [locations]);
+  const allEntries = useMemo(() => [...entries, ...buildFridgeEntries(stockItems)], [entries, stockItems]);
+  const voice = useVoiceCapture();
   const [search, setSearch] = useState("");
   const [freezerFilter, setFreezerFilter] = useState("all");
   const [compartmentFilter, setCompartmentFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
-  const [showVoice, setShowVoice] = useState(false);
   const [showLocations, setShowLocations] = useState(false);
   const [showAddFreezer, setShowAddFreezer] = useState(false);
   const [freezerName, setFreezerName] = useState("");
   const [addFreezerError, setAddFreezerError] = useState("");
-  const [draft, setDraft] = useState(emptyDraft);
-  const [voiceText, setVoiceText] = useState("");
-  const [voiceError, setVoiceError] = useState("");
-  const [listening, setListening] = useState(false);
   const [editingEntry, setEditingEntry] = useState("");
   const [editLocationKey, setEditLocationKey] = useState("");
   const [editDate, setEditDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [busyEntry, setBusyEntry] = useState("");
   const [message, setMessage] = useState("");
-  const recognitionRef = useRef(null);
-  const speechAttemptRef = useRef(0);
-
-  useEffect(() => {
-    return () => recognitionRef.current?.cancel();
-  }, []);
 
   const visibleEntries = useMemo(() => filterFreezerEntries(entries, {
     search,
@@ -106,8 +73,9 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
   const totalUnits = entries.reduce((total, entry) => total + entry.count, 0);
   const unassignedCount = entries.filter((entry) => entry.freezerId === UNASSIGNED_ID)
     .reduce((total, entry) => total + entry.count, 0);
-  const defaultLocationKey = locations.find((location) => location.freezerId === freezerFilter)?.key || locations[0]?.key || "";
-  const selectedLocation = (key) => locations.find((location) => location.key === key);
+  const defaultLocationKey = locations.find((location) => location.freezerId === freezerFilter && location.compartmentId === compartmentFilter)?.key ||
+    locations.find((location) => location.freezerId === freezerFilter)?.key || locations[0]?.key || "";
+  const selectedLocation = (key) => allLocations.find((location) => location.key === key);
 
   const run = async (action, success) => {
     setBusy(true);
@@ -128,26 +96,31 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
     setBusyEntry(entry.key);
     setMessage("");
     try {
-      await changeFrozenStock(db, householdId, entry, delta);
+      if (entry.freezerId === UNASSIGNED_ID) {
+        await changeFrozenStock(db, householdId, entry, delta);
+        return;
+      }
+      const proposal = {
+        id: newId(), kind: delta > 0 ? "add" : "remove", name: entry.stockItem.name,
+        stockItemId: entry.stockItem.id, quantity: Math.abs(delta), unitLabel: entry.unitLabel,
+        opened: false, sourceLocationKey: entry.locationKey, targetLocationKey: "",
+        frozenAt: delta > 0 ? entry.frozenAt : "", sourcePhrase: "Manual update",
+      };
+      let [operation] = prepareInventoryOperations([proposal], {
+        entries: allEntries, stockItems, locations: allLocations, sourceLocationKey: entry.locationKey,
+      });
+      if (operation.issues.some((issue) => issue.includes("weighed batch"))) {
+        if (!window.confirm("This splits a weighed batch. The remaining weight will be unknown. Continue?")) return;
+        [operation] = prepareInventoryOperations([{ ...proposal, allowUnknownWeight: true }], {
+          entries: allEntries, stockItems, locations: allLocations, sourceLocationKey: entry.locationKey,
+        });
+      }
+      if (operation.issues.length) throw new Error(operation.issues[0]);
+      await applyInventoryOperations(db, householdId, [operation], allLocations);
     } catch (error) {
       setMessage(error.message || "Could not update stock.");
     } finally {
       setBusyEntry("");
-    }
-  };
-
-  const submitAdd = async (event) => {
-    event.preventDefault();
-    const name = draft.name.trim();
-    const location = selectedLocation(draft.locationKey || defaultLocationKey);
-    if (!name || !location) return;
-    const saved = await run(
-      () => addFrozenStock(db, householdId, stockItems, { name, count: draft.count, location, frozenAt: draft.frozenAt }),
-      `${name} added to ${location.label}.`
-    );
-    if (saved) {
-      setDraft(emptyDraft);
-      setShowAdd(false);
     }
   };
 
@@ -265,38 +238,21 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
     }
   };
 
-  const beginVoice = () => {
-    setShowVoice(true);
-    setVoiceText("");
-    setVoiceError("");
-    setMessage("");
-    recognitionRef.current?.cancel();
-    const attempt = ++speechAttemptRef.current;
-    try {
-      recognitionRef.current = startBrowserTranscription({
-        onTranscript: (text) => { if (attempt === speechAttemptRef.current) setVoiceText(text); },
-        onError: (error) => { if (attempt === speechAttemptRef.current) setVoiceError(error); },
-        onEnd: () => { if (attempt === speechAttemptRef.current) setListening(false); },
-      });
-      setListening(true);
-    } catch (error) {
-      setVoiceError(error.message || "Could not start voice capture. Type the update instead.");
-      setListening(false);
-    }
-  };
-
-  const cancelVoice = () => {
-    speechAttemptRef.current += 1;
-    recognitionRef.current?.cancel();
-    recognitionRef.current = null;
-    setListening(false);
-    setShowVoice(false);
-  };
-
   const saveEntryDetails = async (entry) => {
     const location = selectedLocation(editLocationKey);
     if (!location) return;
-    const saved = await run(() => moveFrozenStock(db, householdId, entry, location, editDate), "Location updated.");
+    const saved = await run(async () => {
+      if (location.kind === "freezer") return moveFrozenStock(db, householdId, entry, location, editDate);
+      if (entry.freezerId === UNASSIGNED_ID) return moveUnassignedFrozenToFridge(db, householdId, entry.stockItem.id, entry.unitIds);
+      const [operation] = prepareInventoryOperations([{
+        id: newId(), kind: "move", name: entry.stockItem.name,
+        stockItemId: entry.stockItem.id, quantity: entry.count, unitLabel: entry.unitLabel,
+        opened: false, sourceLocationKey: entry.locationKey, targetLocationKey: location.key,
+        sourcePhrase: "Manual move",
+      }], { entries: allEntries, stockItems, locations: allLocations, sourceLocationKey: entry.locationKey });
+      if (operation.issues.length) throw new Error(operation.issues[0]);
+      return applyInventoryOperations(db, householdId, [operation], allLocations);
+    }, "Location updated.");
     if (saved) setEditingEntry("");
   };
 
@@ -312,11 +268,11 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
             </p>
           </div>
           {!loadError && <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={beginVoice} disabled={!locations.length}
+            <button type="button" onClick={() => { setMessage(""); voice.begin(); }} disabled={!locations.length}
               className="min-h-12 rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 shadow-sm disabled:opacity-40">
               🎙 Speak inventory
             </button>
-            <button type="button" onClick={() => { setDraft({ ...emptyDraft, locationKey: defaultLocationKey }); setShowAdd(true); }}
+            <button type="button" onClick={() => setShowAdd(true)}
               disabled={!locations.length} className="min-h-12 rounded-xl border border-sky-300 bg-sky-500 px-5 py-3 text-sm font-bold text-white disabled:opacity-40">
               + Add food
             </button>
@@ -324,6 +280,7 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
         </div>
       </section>
 
+      <InventoryExportControls stockItems={stockItems} freezers={freezers} defaultScope="freezer" disabled={stockLoading || freezersLoading || Boolean(stockError || loadError)} />
       {loadError && <section role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
         <h2 className="font-semibold">Freezer locations could not be loaded</h2>
         <p className="mt-1">{errorCode === "permission-denied"
@@ -443,6 +400,7 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
                   {entry.frozenAt && <p className="mt-0.5 text-xs text-slate-500">Frozen {entry.frozenAt}</p>}
                   {entry.mixedDates && <p className="mt-0.5 text-xs text-slate-500">Mixed freezing dates</p>}
                   {entry.openedCount > 0 && <p className="mt-0.5 text-xs text-amber-700">{entry.openedCount} opened</p>}
+                  {entry.knownGrams > 0 && <p className="mt-0.5 text-xs text-slate-600">{entry.knownGrams} g{entry.hasUnknown ? " known" : " total"}</p>}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => changeEntry(entry, -Math.min(1, entry.count))} disabled={busyEntry === entry.key} aria-label={`Use one ${entry.stockItem.name}`} className="grid h-11 w-11 place-items-center rounded-xl border border-slate-200 text-xl font-bold disabled:opacity-40">−</button>
@@ -450,36 +408,30 @@ export default function FreezerHome({ householdId, stockItems, stockLoading, sto
                   <button type="button" onClick={() => changeEntry(entry, 1)} disabled={busyEntry === entry.key || entry.freezerId === UNASSIGNED_ID} aria-label={`Add one ${entry.stockItem.name}`} className="grid h-11 w-11 place-items-center rounded-xl bg-emerald-700 text-xl font-bold text-white disabled:opacity-40">+</button>
                 </div>
               </div>
-              <button type="button" onClick={() => { setEditingEntry(editingEntry === entry.key ? "" : entry.key); setEditLocationKey(entry.freezerId === UNASSIGNED_ID ? defaultLocationKey : `${entry.freezerId}/${entry.compartmentId}`); setEditDate(entry.frozenAt); }} className="mt-2 min-h-9 text-xs font-medium text-sky-800">{editingEntry === entry.key ? "Close" : "Move or edit date"}</button>
-              {editingEntry === entry.key && <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
-                <LocationSelect value={editLocationKey} onChange={setEditLocationKey} locations={locations} className="flex-1" />
-                <label className="text-xs text-slate-600">Frozen on <input type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 px-2 text-sm" /></label>
-                <button type="button" onClick={() => saveEntryDetails(entry)} disabled={busy || !editLocationKey} className="min-h-11 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40">Save</button>
+              <button type="button" onClick={() => { setEditingEntry(editingEntry === entry.key ? "" : entry.key); setEditLocationKey(entry.freezerId === UNASSIGNED_ID ? defaultLocationKey : `${entry.freezerId}/${entry.compartmentId}`); setEditDate(entry.frozenAt); }} className="mt-2 min-h-9 text-xs font-medium text-sky-800">{editingEntry === entry.key ? "Close" : "Move or edit details"}</button>
+              {editingEntry === entry.key && <div className="space-y-3 border-t border-slate-100 pt-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <LocationSelect value={editLocationKey} onChange={setEditLocationKey} locations={allLocations} className="flex-1" />
+                  {editLocationKey !== "fridge" && <label className="text-xs text-slate-600">Frozen on <input type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-slate-200 px-2 text-sm" /></label>}
+                  <button type="button" onClick={() => saveEntryDetails(entry)} disabled={busy || !editLocationKey} className="min-h-11 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white disabled:opacity-40">Save location</button>
+                </div>
+                <div className="max-h-64 space-y-2 overflow-y-auto">{entry.units.map((unit) => <UnitDetailsRow key={unit.id} householdId={householdId} stockItemId={entry.stockItem.id} unit={unit} storageKind="freezer" onSaved={setMessage} />)}</div>
               </div>}
             </article>
           ))}
         </div>}
       </section>}
 
-      {showAdd && <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 sm:items-center" role="presentation">
-        <form onSubmit={submitAdd} className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-          <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Add frozen food</h2><button type="button" onClick={() => setShowAdd(false)} className="min-h-10 px-2 text-sm">Close</button></div>
-          <label className="mt-4 block text-sm font-medium">Food name<input autoFocus required value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="e.g. Chicken thighs" className="mt-1 min-h-12 w-full rounded-xl border border-slate-200 px-3" /></label>
-          <div className="mt-3 grid grid-cols-[100px_1fr] gap-3">
-            <label className="text-sm font-medium">Portions<input type="number" min="1" max="99" required value={draft.count} onChange={(event) => setDraft({ ...draft, count: event.target.value })} className="mt-1 min-h-12 w-full rounded-xl border border-slate-200 px-3" /></label>
-            <label className="text-sm font-medium">Location<LocationSelect value={draft.locationKey || defaultLocationKey} onChange={(value) => setDraft({ ...draft, locationKey: value })} locations={locations} className="mt-1 w-full" /></label>
-          </div>
-          <label className="mt-3 block text-sm font-medium">Date frozen <span className="font-normal text-slate-500">(optional)</span><input type="date" value={draft.frozenAt} onChange={(event) => setDraft({ ...draft, frozenAt: event.target.value })} className="mt-1 min-h-12 w-full rounded-xl border border-slate-200 px-3" /></label>
-          {message && <p role="status" className="mt-3 text-sm text-rose-700">{message}</p>}
-          <button type="submit" disabled={busy || !locations.length} className="mt-5 min-h-12 w-full rounded-xl bg-emerald-700 px-4 font-bold text-white disabled:opacity-40">{busy ? "Saving…" : "Add to freezer"}</button>
-        </form>
-      </div>}
+      {showAdd && <QuickAddDialog householdId={householdId} stockItems={stockItems} entries={allEntries}
+        locations={allLocations} availableLocations={locations} defaultLocationKey={defaultLocationKey}
+        storageKind="freezer" onClose={() => setShowAdd(false)}
+        onSaved={(savedMessage) => { setShowAdd(false); setMessage(savedMessage); }} />}
 
-      {showVoice && <VoiceInventoryDialog
-        householdId={householdId} stockItems={stockItems} entries={entries} locations={locations}
-        defaultLocationKey={defaultLocationKey} capturedText={voiceText} captureError={voiceError}
-        listening={listening} onStop={() => recognitionRef.current?.stop()} onRetry={beginVoice}
-        onCancel={cancelVoice} onSaved={(savedMessage) => { cancelVoice(); setMessage(savedMessage); }}
+      {voice.open && <VoiceInventoryDialog
+        householdId={householdId} stockItems={stockItems} entries={allEntries} locations={allLocations}
+        defaultLocationKey={defaultLocationKey} capturedText={voice.text} captureError={voice.error}
+        listening={voice.listening} onStop={voice.stop} onRetry={voice.retry}
+        onCancel={voice.cancel} onSaved={(savedMessage) => { voice.cancel(); setMessage(savedMessage); }}
       />}
     </div>
   );

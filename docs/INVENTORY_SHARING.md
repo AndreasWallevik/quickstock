@@ -1,0 +1,11 @@
+# Copy and share inventory
+
+The Fridge and Freezer screens each have a **Copy inventory** action. It copies the current view with one tap; the adjacent selector can switch to Fridge, Freezer, or both. Supported devices also show **Share**, which opens the system share sheet. No account, backend, or new dependency is required.
+
+The export is generated from the latest subscribed household stock and freezer locations when the action is tapped. Search and screen filters do not trim the shared list. Empty/depleted units are excluded. Units are grouped by food category and include their stored count, optional known weight, opened/unopened state, and freezer/compartment where known. A partial known weight is marked as known weight; absent weight is omitted. Legacy frozen food without a valid compartment is marked unassigned, and legacy nonfrozen food without an explicit location is marked location not set.
+
+Stored product categories take priority. For a generic protein category, or when no category exists, a short list of known names and emojis gives more useful groups; anything unrecognized goes to **Other**. No category or weight is written back to Firestore. The export is plain text with Unicode headings and bullets, suitable for messaging apps and email. It follows the page language (`en` now, with Norwegian labels supported if the page language changes).
+
+Copy first uses the secure-context Clipboard API. If that fails or is unavailable, it tries a selectable textarea copy for older browsers. If both fail, the text remains visible and selected for manual copying. The native Web Share API is optional; its failure does not remove the Copy action. Clipboard and native share need a direct user tap, which the controls provide. [MDN Clipboard](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard/writeText) and [MDN Web Share](https://developer.mozilla.org/en-US/docs/Web/API/Web_Share_API) describe the browser requirements.
+
+This feature only reads inventory and sends text to the clipboard or the share destination the user chooses. It does not change stock or store exports. Local checks: `npm run lint`, `npm run test`, and `npm run build`. Validate actual copy/share behavior in the installed iPhone PWA before publishing to the live Hosting channel.
