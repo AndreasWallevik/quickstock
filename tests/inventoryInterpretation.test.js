@@ -7,6 +7,7 @@ import {
   validateInventoryOperation,
 } from "../src/freezer/inventoryInterpretation.js";
 import { applyOperationToUnits } from "../src/freezer/inventoryChanges.js";
+import { startBrowserTranscription } from "../src/freezer/browserTranscription.js";
 
 const freezers = [
   { id: "kitchen", name: "Kjøkkenfryser", position: 0, compartments: [{ id: "top", name: "Øverste skuff" }] },
@@ -110,6 +111,44 @@ test("incorrect transcript produces no executable action", () => {
   assert.equal(operation.kind, "unknown");
   assert.ok(operation.issues.length > 0);
   assert.ok(validateInventoryOperation(operation, locations).length > 0);
+});
+
+test("unrecognized text remains an editable food suggestion without an action or quantity", () => {
+  const parsed = interpretInventoryText("Test");
+  const [operation] = prepareInventoryOperations(parsed.proposals, context);
+  assert.equal(operation.name, "Test");
+  assert.equal(operation.kind, "unknown");
+  assert.equal(operation.quantity, null);
+  assert.ok(operation.issues.some((issue) => issue.includes("action")));
+  assert.ok(operation.issues.some((issue) => issue.includes("quantity")));
+  assert.ok(validateInventoryOperation(operation, locations).length > 0);
+});
+
+test("recognized speech reaches the same food interpretation as typed text", () => {
+  const previousWindow = globalThis.window;
+  let recognition;
+  class FakeRecognition {
+    start() { recognition = this; }
+    stop() {}
+    abort() {}
+  }
+  globalThis.window = { SpeechRecognition: FakeRecognition };
+  try {
+    let proposal;
+    startBrowserTranscription({
+      onTranscript: (text) => { [proposal] = interpretInventoryText(text).proposals; },
+      onError: () => assert.fail("Speech should be recognized"),
+      onEnd: () => {},
+    });
+    assert.equal(recognition.lang, "nb-NO");
+    recognition.onresult({ results: [[{ transcript: "Legg til to pakker bacon" }]] });
+    assert.equal(proposal.name, "Bacon");
+    assert.equal(proposal.quantity, 2);
+    assert.equal(proposal.kind, "add");
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
 });
 
 test("vague quantity is never interpreted as one", () => {

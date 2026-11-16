@@ -103,7 +103,7 @@ export default function VoiceInventoryDialog({
         <label className="mt-4 block text-sm font-medium text-slate-700">Transcript or typed update
           <textarea value={transcript} onChange={(event) => { setTranscript(event.target.value); setDirty(true); }} placeholder="Skriv eller si: Legg til to pakker bacon" className="mt-1 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm" />
         </label>
-        <button type="button" onClick={interpret} disabled={!transcript.trim()} className="mt-2 min-h-11 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Interpret text</button>
+        {dirty && <button type="button" onClick={interpret} disabled={!transcript.trim()} className="mt-2 min-h-11 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Interpret text</button>}
         {dirty && <p className="mt-2 text-sm text-amber-800">Transcript changed. Interpret it again before saving.</p>}
 
         {prepared.length > 0 && !dirty && <section className="mt-5 space-y-3" aria-label="Proposed changes">
@@ -113,6 +113,7 @@ export default function VoiceInventoryDialog({
             const products = operation.kind === "add" ? existingProducts : sourceProducts;
             return <article key={operation.id} className={`rounded-xl border p-3 ${operation.issues.length ? "border-amber-200 bg-amber-50/50" : "border-emerald-100 bg-white"}`}>
               <div className="flex items-center justify-between gap-2"><p className="min-w-0 truncate text-xs text-slate-500">Heard: {operation.sourcePhrase}</p><button type="button" onClick={() => setProposals((current) => current.filter((item) => item.id !== operation.id))} className="min-h-8 px-2 text-xs text-rose-700">Discard</button></div>
+              {original.kind === "unknown" && <p className="mt-2 text-xs text-amber-900">We could not identify an inventory change. Check the food name, then choose an action and quantity.</p>}
               <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[145px_1fr_90px]">
                 <label className="text-xs font-medium text-slate-600">Action<select value={original.kind} onChange={(event) => update(operation.id, { kind: event.target.value, stockItemId: "" })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm">{original.kind === "unknown" && <option value="unknown">Choose action</option>}{Object.entries(actionLabels).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
                 <label className="text-xs font-medium text-slate-600">Food<input value={original.name} onChange={(event) => update(operation.id, { name: event.target.value, stockItemId: "" })} placeholder="Choose or correct name" className="mt-1 min-h-11 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm" /></label>

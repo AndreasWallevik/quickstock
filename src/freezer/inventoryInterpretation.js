@@ -98,7 +98,7 @@ export function interpretInventoryText(transcript) {
   if (spokenLocation) return { spokenLocation, proposals: mergeRepeatedAdds(splitItems(command).map((part) => parseItemPhrase(part, "add"))) };
   if (readQuantity(command).quantity !== null) return { spokenLocation, proposals: mergeRepeatedAdds(splitItems(command).map((part) => parseItemPhrase(part, "add"))) };
   return { spokenLocation, proposals: [{
-    id: newId(), kind: "unknown", name: "", quantity: null, unitLabel: "item", opened: false,
+    id: newId(), kind: "unknown", name: canonicalName(command), quantity: null, unitLabel: "item", opened: false,
     stockItemId: "", targetLocationKey: "", targetText: "", sourcePhrase: command,
   }] };
 }
